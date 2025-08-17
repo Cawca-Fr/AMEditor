@@ -1,0 +1,103 @@
+plugins {
+    id 'com.android.application'
+    id 'org.jetbrains.kotlin.android'
+    id 'com.chaquo.python' version '16.1.0'
+}
+
+def keystorePropertiesFile = rootProject.file("keystore.properties")
+println "Keystore properties file exists: ${keystorePropertiesFile.exists()}"
+def keystoreProperties = new Properties()
+if (keystorePropertiesFile.exists()) {
+    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+    println "Value of 'storeFile' from properties: ${keystoreProperties['storeFile']}"
+}
+
+android {
+    signingConfigs {
+        debug {
+            if (keystorePropertiesFile.exists() && keystoreProperties['debugStoreFile'] != null) {
+                storeFile file(keystoreProperties['debugStoreFile'])
+                keyAlias keystoreProperties['debugKeyAlias']
+                storePassword keystoreProperties['debugStorePassword']
+                keyPassword keystoreProperties['debugKeyPassword']
+            } else {
+                println("Warning: Debug keystore properties not found or incomplete in keystore.properties. Default debug signing may be used.")
+            }
+        }
+        release {
+            if (keystorePropertiesFile.exists() && keystoreProperties['releaseStoreFile'] != null) {
+                storeFile file(keystoreProperties['releaseStoreFile'])
+                keyAlias keystoreProperties['releaseKeyAlias']
+                storePassword keystoreProperties['releaseStorePassword']
+                keyPassword keystoreProperties['releaseKeyPassword']
+            } else {
+                println("Warning: Keystore properties not found for release build.")
+            }
+        }
+    }
+    namespace 'com.cawcafr.ameditor'
+    compileSdk 36
+
+    defaultConfig {
+        applicationId "com.cawcafr.ameditor"
+        minSdk 24
+        targetSdk 36
+        //noinspection EditedTargetSdkVersion
+        versionCode 1
+        versionName "1.0"
+
+        ndk {
+            //noinspection ChromeOsAbiSupport
+            abiFilters "armeabi-v7a", "arm64-v8a"
+        }
+
+        python {
+            version "3.11"
+            buildPython "C:\\Users\\cawcafr\\AppData\\Local\\Programs\\Python\\Python313\\python.exe"
+            pip {
+                install "pyaxmlparser"
+            }
+
+
+        }
+    }
+    buildFeatures {
+        viewBinding true // optionnel mais recommandé
+    }
+
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+            debuggable true
+        }
+        release {
+            minifyEnabled true
+            shrinkResources true
+            signingConfig signingConfigs.release
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlin {
+        jvmToolchain(17) // Ensure this matches your JavaVersion.VERSION_17
+    }
+
+    buildToolsVersion '36.0.0'
+    ndkVersion '29.0.13599879'
+}
+
+dependencies {
+    implementation libs.androidx.core.ktx.v1160
+    implementation libs.androidx.appcompat
+    implementation libs.material
+
+    //noinspection UseTomlInstead
+    implementation "androidx.activity:activity-ktx:1.10.1"
+    implementation 'net.sf.kxml:kxml2:2.3.0'
+    // implementation("org.apktool:apktool-lib:2.12.0")
+}

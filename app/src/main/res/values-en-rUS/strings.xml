@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">ManifestEditor</string>
+    <string name="selected_apk_message">Selected APK: %1$s</string>
+    <string name="processing_started">Starting Patch…\nPlease wait during processing.</string>
+    <string name="select_apk_first">Please select an APK file first.</string>
+
+    <!-- Permissions -->
+    <string name="permission_manage_storage_granted">All files access permission granted.</string>
+    <string name="permission_manage_storage_denied_long">All files access permission is required for some advanced features. The application will continue with limited functionality.</string>
+    <string name="permission_legacy_storage_granted">Legacy storage permissions granted.</string>
+    <string name="permission_legacy_storage_denied">Legacy storage permissions are required for older Android versions.</string>
+
+    <!-- Cache Copy -->
+    <string name="error_copying_apk_to_cache">Error copying APK to cache.</string>
+    <string name="error_copying_apk_to_cache_detail">Error copying APK to cache: %1$s</string>
+    <string name="error_copying_apk_to_cache_generic">Generic error copying APK: %1$s</string>
+
+
+    <!-- Python Script -->
+    <string name="log_python_call_details_kotlin">Calling process_apk with:\nInput (cache): %1$s\nOutput (temp cache): %2$s</string>
+    <string name="python_processing_complete_details">Python processing complete!\n  OneSignal found: %1$d\n  Trackers found: %2$d\n  Intents modified: %3$d</string>
+    <string name="prompt_save_location">Please choose where to save the modified APK.</string>
+    <string name="python_script_unknown_error">Unknown Python script error or unexpected result.</string>
+    <string name="python_script_error">Python error during patch: %1$s</string>
+    <string name="python_error_exception">Python runtime error: %1$s</string>
+    <string name="generic_error_exception">Runtime error: %1$s</string>
+    <string name="permission_manage_storage_needed_for_save">Manage storage permission is required.</string>
+    <string name="manual_permission_grant_needed_manage_storage">Manage storage permission needs to be granted manually.</string>
+    <!-- SAF Save -->
+    <string name="error_saving_temp_file_missing">Temporary file to save not found.</string>
+    <string name="apk_saved_successfully_at">Modified APK saved successfully at: %1$s</string>
+    <string name="apk_saved_successfully">Modified APK saved!</string>
+    <string name="error_saving_apk">Error saving APK: %1$s</string>
+    <string name="error_saving_apk_short">Save error</string>
+
+</resources>

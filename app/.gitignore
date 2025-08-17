@@ -1,0 +1,7 @@
+# App-specific build outputs
+build/
+*.apk
+*.aab
+
+# ChaQuopy Python cache
+src/main/python/pycache/

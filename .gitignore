@@ -1,0 +1,24 @@
+# Android Studio / IntelliJ
+.idea/
+*.iml
+.gradle/
+#build/
+local.properties
+.tmp/
+caches/
+daemon/
+kotlin-profile/
+native/
+
+# Gradle
+wrapper/dists/
+
+# Generated APKs and bundles
+*.apk
+*.aab
+
+# Mac
+.DS_Store
+
+# Windows
+Thumbs.db
