@@ -48,12 +48,12 @@ android {
 
         ndk {
             //noinspection ChromeOsAbiSupport
-            abiFilters "armeabi-v7a", "arm64-v8a"
+            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
         }
 
         python {
             version "3.11"
-            buildPython "C:\\Users\\cawcafr\\AppData\\Local\\Programs\\Python\\Python313\\python.exe"
+            buildPython "C:\\Users\\cawca\\AppData\\Local\\Programs\\Python\\Python311\\python.exe"
             pip {
                 install "pyaxmlparser"
             }
@@ -87,17 +87,18 @@ android {
         jvmToolchain(17) // Ensure this matches your JavaVersion.VERSION_17
     }
 
-    buildToolsVersion '36.0.0'
-    ndkVersion '29.0.13599879'
+  //  buildToolsVersion '36.0.0'
+    //ndkVersion '29.0.13599879'
 }
 
 dependencies {
     implementation libs.androidx.core.ktx.v1160
     implementation libs.androidx.appcompat
     implementation libs.material
-
-    //noinspection UseTomlInstead
-    implementation "androidx.activity:activity-ktx:1.10.1"
-    implementation 'net.sf.kxml:kxml2:2.3.0'
-    // implementation("org.apktool:apktool-lib:2.12.0")
+    implementation libs.androidx.activity.ktx
+    implementation libs.kxml2
+    implementation libs.commons.lang3
+    implementation libs.commons.io
+    implementation libs.androidx.media3.exoplayer
+    implementation libs.androidx.room.compiler.processing.testing
 }

@@ -1,200 +1,239 @@
 package com.cawcafr.ameditor.axml;
 
-import com.cawcafr.ameditor.axml.arsc.chunk.StringPool;
-import com.cawcafr.ameditor.axml.arsc.chunk.xml.*;
-import com.cawcafr.ameditor.axml.arsc.item.ResXmlAttribute;
-import com.cawcafr.ameditor.axml.arsc.pool.ResXmlStringPool;
-import com.cawcafr.ameditor.axml.arsc.value.ValueType;
+import android.util.Log;
 
-import org.w3c.dom.*;
-
-import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.File;
+import java.io.FileInputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import java.io.OutputStream;
-import java.util.ArrayList;
-import java.util.List;
+import java.nio.charset.StandardCharsets;
 
 /**
- * Convertit un fichier AndroidManifest.xml texte en AXML binaire complet
- * avec gestion du namespace Android et génération du ResourceMap.
+ * AXMLWriter complet avec gestion robuste des erreurs et multiples modes d'encodage
  */
 public class AXMLWriter {
 
-    public static final String ANDROID_NS_PREFIX = "android";
-    public static final String ANDROID_NS_URI = "http://schemas.android.com/apk/res/android";
+    private static final String TAG = "AXMLWriter";
 
-    // Classe interne pour mapper attribut -> ID
-    private static class ResourceEntry {
-        String name;
-        int id;
-        ResourceEntry(String name, int id) {
-            this.name = name;
-            this.id = id;
-        }
-    }
+    private final Encoder encoder;
+    private Config config;
 
-    // Table complète extraite de public.xml du framework Android
-    private static final List<ResourceEntry> ANDROID_ATTRIBUTES = new ArrayList<>();
-    static {
-        addAndroidAttr("theme", 0x01010000);
-        addAndroidAttr("label", 0x01010001);
-        addAndroidAttr("icon", 0x01010002);
-        addAndroidAttr("name", 0x01010003);
-        addAndroidAttr("manageSpaceActivity", 0x01010004);
-        addAndroidAttr("allowClearUserData", 0x01010005);
-        addAndroidAttr("permission", 0x01010006);
-        addAndroidAttr("readPermission", 0x01010007);
-        addAndroidAttr("writePermission", 0x01010008);
-        addAndroidAttr("protectionLevel", 0x01010009);
-        addAndroidAttr("permissionGroup", 0x0101000a);
-        addAndroidAttr("sharedUserId", 0x0101000b);
-        addAndroidAttr("hasCode", 0x0101000c);
-        addAndroidAttr("persistent", 0x0101000d);
-        addAndroidAttr("enabled", 0x0101000e);
-        addAndroidAttr("exported", 0x0101000f);
-        addAndroidAttr("process", 0x01010010);
-        addAndroidAttr("taskAffinity", 0x01010011);
-        addAndroidAttr("multiprocess", 0x01010012);
-        addAndroidAttr("finishOnTaskLaunch", 0x01010013);
-        addAndroidAttr("clearTaskOnLaunch", 0x01010014);
-        addAndroidAttr("stateNotNeeded", 0x01010015);
-        addAndroidAttr("excludeFromRecents", 0x01010016);
-        addAndroidAttr("authorities", 0x01010017);
-        addAndroidAttr("syncable", 0x01010018);
-        addAndroidAttr("initOrder", 0x01010019);
-        addAndroidAttr("grantUriPermissions", 0x0101001a);
-        addAndroidAttr("priority", 0x0101001b);
-        addAndroidAttr("launchMode", 0x0101001c);
-        addAndroidAttr("screenOrientation", 0x0101001e);
-        addAndroidAttr("configChanges", 0x0101001f);
-        addAndroidAttr("description", 0x01010020);
-        addAndroidAttr("targetPackage", 0x01010021);
-        addAndroidAttr("handleProfiling", 0x01010022);
-        addAndroidAttr("functionalTest", 0x01010023);
-
-        // Application / manifest meta
-        addAndroidAttr("versionCode", 0x0101021b);
-        addAndroidAttr("versionName", 0x0101021c);
-        addAndroidAttr("installLocation", 0x010102b7);
-        addAndroidAttr("minSdkVersion", 0x0101020c);
-        addAndroidAttr("targetSdkVersion", 0x01010270);
-        addAndroidAttr("maxSdkVersion", 0x01010277);
-        addAndroidAttr("debuggable", 0x0101000f);
-        addAndroidAttr("allowBackup", 0x01010280);
-        addAndroidAttr("largeHeap", 0x010103a9);
-        addAndroidAttr("supportsRtl", 0x010103af);
-
-        // Intent filters
-        addAndroidAttr("scheme", 0x01010027);
-        addAndroidAttr("host", 0x01010028);
-        addAndroidAttr("port", 0x01010029);
-        addAndroidAttr("path", 0x0101002a);
-        addAndroidAttr("pathPrefix", 0x0101002b);
-        addAndroidAttr("pathPattern", 0x0101002c);
-        addAndroidAttr("mimeType", 0x01010026);
-        // Activity/task specifics
-        addAndroidAttr("uiOptions", 0x01010382);
-        addAndroidAttr("hardwareAccelerated", 0x010102d3);
-    }
-
-    private static void addAndroidAttr(String name, int id) {
-        ANDROID_ATTRIBUTES.add(new ResourceEntry(name, id));
-    }
-
-    private static int findAndroidAttrId(String name) {
-        for (ResourceEntry e : ANDROID_ATTRIBUTES) {
-            if (e.name.equals(name)) return e.id;
-        }
-        return -1;
+    public AXMLWriter() {
+        this.encoder = new Encoder();
+        this.config = new Config();
     }
 
     /**
-     * Encode un AndroidManifest.xml texte en flux binaire AXML complet.
+     * Encode un fichier XML en AXML binaire
      */
-    public static void encode(File xmlFile, OutputStream out) throws Exception {
-        Document document = DocumentBuilderFactory.newInstance()
-                .newDocumentBuilder().parse(xmlFile);
-        document.getDocumentElement().normalize();
+    public void encodeFile(File xmlFile, OutputStream out) throws AXMLEncodeException {
+        if (xmlFile == null) {
+            throw new AXMLEncodeException("XML file is null");
+        }
 
-        // Structure principale AXML
-        ResXmlTree tree = new ResXmlTree();
-        ResXmlStringPool pool = tree.getStringPool();
+        if (!xmlFile.exists()) {
+            throw new AXMLEncodeException("XML file does not exist: " + xmlFile.getAbsolutePath());
+        }
 
-        // ResourceMap (vide pour l'instant)
-        ResXmlResourceMap resMap = new ResXmlResourceMap();
-        tree.addXmlChunk(resMap);
+        if (!xmlFile.canRead()) {
+            throw new AXMLEncodeException("Cannot read XML file: " + xmlFile.getAbsolutePath());
+        }
 
-        // Namespace Android
-        ResXmlStartNamespace nsStart = new ResXmlStartNamespace(pool);
-        nsStart.setPrefix(ANDROID_NS_PREFIX);
-        nsStart.setUri(ANDROID_NS_URI);
-        tree.addXmlChunk(nsStart);
+        long fileSize = xmlFile.length();
+        if (fileSize == 0) {
+            throw new AXMLEncodeException("XML file is empty: " + xmlFile.getAbsolutePath());
+        }
 
-        // Ajout récursif des éléments du manifest
-        addNode(document.getDocumentElement(), pool, tree, resMap);
+        if (fileSize > config.maxFileSize) {
+            throw new AXMLEncodeException("XML file too large: " + fileSize + " bytes (max: " + config.maxFileSize + ")");
+        }
 
-        // Fermeture namespace Android
-        ResXmlEndNamespace nsEnd = new ResXmlEndNamespace();
-        nsEnd.setPrefixIndex(pool.indexOf(ANDROID_NS_PREFIX));
-        nsEnd.setUriIndex(pool.indexOf(ANDROID_NS_URI));
-        tree.addXmlChunk(nsEnd);
+        Log.i(TAG, "Starting AXML encoding for: " + xmlFile.getAbsolutePath() + " (" + fileSize + " bytes)");
 
-        // Écriture binaire
-        tree.writeBytes(out);
-        out.flush();
+        try {
+            byte[] axmlData = encoder.encodeFile(new DefaultReferenceResolver(), xmlFile.getAbsolutePath());
+
+            validateAxmlData(axmlData, xmlFile);
+
+            out.write(axmlData);
+            out.flush();
+
+            Log.i(TAG, "AXML encoding successful. Output size: " + axmlData.length + " bytes");
+
+        } catch (Exception e) {
+            Log.e(TAG, "AXML encoding failed for: " + xmlFile.getAbsolutePath(), e);
+            throw new AXMLEncodeException("Encoding failed: " + e.getMessage(), e);
+        }
     }
 
-    private static void addNode(Element elem, ResXmlStringPool pool, ResXmlTree tree, ResXmlResourceMap resMap) {
-        if (pool.indexOf(elem.getTagName()) == -1) {
-            pool.add(elem.getTagName());
+    /**
+     * Encode une chaîne XML en AXML binaire
+     */
+    public void encodeString(String xmlContent, OutputStream out) throws AXMLEncodeException {
+        if (xmlContent == null || xmlContent.trim().isEmpty()) {
+            throw new AXMLEncodeException("XML content is null or empty");
         }
 
-        ResXmlStartElement startChunk = new ResXmlStartElement(pool);
-        startChunk.setName(elem.getTagName());
-
-        // Attributs
-        NamedNodeMap attrs = elem.getAttributes();
-        for (int i = 0; i < attrs.getLength(); i++) {
-            Node n = attrs.item(i);
-
-            if (pool.indexOf(n.getNodeName()) == -1) {
-                pool.add(n.getNodeName());
-            }
-            if (pool.indexOf(n.getNodeValue()) == -1) {
-                pool.add(n.getNodeValue());
-            }
-
-            ResXmlAttribute attr = new ResXmlAttribute(pool);
-            attr.setName(n.getNodeName());
-            attr.setRawValue(n.getNodeValue());
-            attr.setValueType(ValueType.STRING);
-            attr.setData(0);
-            startChunk.addAttribute(attr);
-
-            // Ajout au ResourceMap si attribut Android connu
-            if (n.getNodeName().startsWith(ANDROID_NS_PREFIX + ":")) {
-                String localName = n.getNodeName().substring(ANDROID_NS_PREFIX.length() + 1);
-                int resId = findAndroidAttrId(localName);
-                if (resId != -1 && !resMap.getResourceIds().contains(resId)) {
-                    resMap.addResourceId(resId);
-                }
-            }
+        if (xmlContent.length() > config.maxStringSize) {
+            throw new AXMLEncodeException("XML content too large: " + xmlContent.length() + " chars (max: " + config.maxStringSize + ")");
         }
 
-        pool.attachElement(startChunk);
-        tree.addXmlChunk(startChunk);
+        Log.i(TAG, "Starting AXML encoding from string (" + xmlContent.length() + " chars)");
 
-        // Enfants
-        NodeList nodes = elem.getChildNodes();
-        for (int i = 0; i < nodes.getLength(); i++) {
-            Node child = nodes.item(i);
-            if (child instanceof Element) {
-                addNode((Element) child, pool, tree, resMap);
-            }
+        try {
+            byte[] axmlData = encoder.encodeString(new DefaultReferenceResolver(), xmlContent);
+
+            validateAxmlData(axmlData, "string input");
+
+            out.write(axmlData);
+            out.flush();
+
+            Log.i(TAG, "AXML encoding from string successful. Output size: " + axmlData.length + " bytes");
+
+        } catch (Exception e) {
+            Log.e(TAG, "AXML encoding from string failed", e);
+            throw new AXMLEncodeException("String encoding failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Encode un InputStream XML en AXML binaire
+     */
+    public void encodeStream(InputStream xmlStream, OutputStream out) throws AXMLEncodeException {
+        if (xmlStream == null) {
+            throw new AXMLEncodeException("XML stream is null");
         }
 
-        ResXmlEndElement endChunk = new ResXmlEndElement();
-        endChunk.setNameIndex(pool.indexOf(elem.getTagName()));
-        tree.addXmlChunk(endChunk);
+        Log.i(TAG, "Starting AXML encoding from stream");
+
+        try {
+            // Lire tout le stream en mémoire (pour les petites/moyennes tailles)
+            byte[] buffer = new byte[config.maxFileSize];
+            int bytesRead = xmlStream.read(buffer);
+
+            if (bytesRead <= 0) {
+                throw new AXMLEncodeException("XML stream is empty");
+            }
+
+            String xmlContent = new String(buffer, 0, bytesRead, StandardCharsets.UTF_8);
+            encodeString(xmlContent, out);
+
+        } catch (IOException e) {
+            throw new AXMLEncodeException("Stream reading failed: " + e.getMessage(), e);
+        } catch (Exception e) {
+            throw new AXMLEncodeException("Stream encoding failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Méthode statique pour un usage rapide - encode un fichier
+     */
+    public static void encode(File xmlFile, OutputStream out) throws AXMLEncodeException {
+        new AXMLWriter().encodeFile(xmlFile, out);
+    }
+
+    /**
+     * Méthode statique pour encoder depuis une string
+     */
+    public static void encodeStringContent(String xmlContent, OutputStream out) throws AXMLEncodeException {
+        new AXMLWriter().encodeString(xmlContent, out);
+    }
+
+    /**
+     * Vérifie la validité des données AXML générées
+     */
+    private void validateAxmlData(byte[] axmlData, Object source) throws AXMLEncodeException {
+        if (axmlData == null) {
+            throw new AXMLEncodeException("Encoder returned null data for: " + source);
+        }
+
+        if (axmlData.length == 0) {
+            throw new AXMLEncodeException("Encoder returned empty data for: " + source);
+        }
+
+        if (axmlData.length < 8) {
+            throw new AXMLEncodeException("AXML data too small: " + axmlData.length + " bytes for: " + source);
+        }
+
+        // Vérification basique du header AXML
+        if (!isValidAxmlHeader(axmlData)) {
+            Log.w(TAG, "Generated AXML data may have invalid header for: " + source);
+            // On ne throw pas d'exception car certains encodeurs peuvent avoir des headers différents
+        }
+
+        Log.d(TAG, "AXML data validation passed for: " + source + " (" + axmlData.length + " bytes)");
+    }
+
+    /**
+     * Vérifie le header AXML basique
+     */
+    private boolean isValidAxmlHeader(byte[] data) {
+        // Header AXML typique: 0x03000800 ou variations
+        if (data.length >= 8) {
+            // Vérifier les magic bytes communs
+            return (data[0] == 0x03 && data[1] == 0x00) || // Un common header pattern
+                    (data[0] == 0x02 && data[1] == 0x00);   // Un autre pattern possible
+        }
+        return false;
+    }
+
+    /**
+     * Classe de configuration pour AXMLWriter
+     */
+    public static class Config {
+        public int maxFileSize = 10 * 1024 * 1024; // 10MB par défaut
+        public int maxStringSize = 5 * 1024 * 1024; // 5MB par défaut
+        public boolean validateOutput = true;
+        public boolean logDetailed = false;
+
+        public Config setMaxFileSize(int maxSize) {
+            this.maxFileSize = maxSize;
+            return this;
+        }
+
+        public Config setMaxStringSize(int maxSize) {
+            this.maxStringSize = maxSize;
+            return this;
+        }
+
+        public Config setValidateOutput(boolean validate) {
+            this.validateOutput = validate;
+            return this;
+        }
+
+        public Config setLogDetailed(boolean detailed) {
+            this.logDetailed = detailed;
+            return this;
+        }
+    }
+
+    /**
+     * Exception spécifique pour l'encodage AXML
+     */
+    public static class AXMLEncodeException extends Exception {
+        public AXMLEncodeException(String message) {
+            super(message);
+        }
+
+        public AXMLEncodeException(String message, Throwable cause) {
+            super(message, cause);
+        }
+    }
+
+    public Config getConfig() {
+        return config;
+    }
+
+    public void setConfig(Config config) {
+        this.config = config;
+    }
+
+    /**
+     * Nettoie les ressources (si nécessaire)
+     */
+    public void cleanup() {
+        // Pour l'instant rien à cleaner, mais gardé pour l'extension future
+        Log.d(TAG, "AXMLWriter cleanup completed");
     }
 }

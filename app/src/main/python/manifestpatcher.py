@@ -5,6 +5,7 @@ import re
 import xml.etree.ElementTree as ET
 from datetime import datetime
 import tempfile
+import json
 
 from axml import AXML  # ton décoder AXML
 from pyaxmlparser import APK
@@ -70,9 +71,9 @@ def decode_axml(axml_path: str, xml_path: str):
         f.write(xml_str)
     log("   ✅ Decoded to plain XML")
 
-def patch_xml(xml_path: str):
+def patch_xml(input_xml_path: str, output_xml_path: str):
     log("3/4  Patching XML…")
-    tree = ET.parse(xml_path)
+    tree = ET.parse(input_xml_path)
     root = tree.getroot()
     counts = {'onesignal': 0, 'trackers': 0, 'empty_intents': 0}
 
@@ -114,28 +115,39 @@ def patch_xml(xml_path: str):
                 counts['empty_intents'] += 1
 
     # Écriture finale et log
-    tree.write(xml_path, encoding='utf-8', xml_declaration=True)
+    tree.write(output_xml_path, encoding='utf-8', xml_declaration=True)
     log(f"   ✅ {counts['onesignal']} OneSignal neutralisés, "
         f"{counts['trackers']} trackers retirés, "
         f"{counts['empty_intents']} intents vides supprimés")
+    return counts
 
-def process_apk(apk_path: str, output_dir: str) -> dict:
+def process_apk(apk_path: str) -> str:
     try:
         log(f"Starting processing for APK: {apk_path}")
 
         tmpdir = tempfile.mkdtemp()
         manifest_axml = os.path.join(tmpdir, "AndroidManifest.axml")
-        manifest_xml  = os.path.join(tmpdir, "AndroidManifest.xml")
+        manifest_xml = os.path.join(tmpdir, "AndroidManifest.xml")
+        patched_xml_path = os.path.join(tmpdir, "AndroidManifest_patched.xml")
 
-        extract_manifest(apk_path, manifest_axml)  # Step 1
-        decode_axml(manifest_axml, manifest_xml)   # Step 2
-        patch_xml(manifest_xml)                    # Step 3
+        # Step 1
+        extract_manifest(apk_path, manifest_axml)
+        # Step 2
+        decode_axml(manifest_axml, manifest_xml)
+        # Step 3 : patch_xml renvoie un dict counts
+        counts = patch_xml(manifest_xml, patched_xml_path)
 
         log("ℹ️  Returning patched XML path for Java-side encoding.")
-        return {"success": True, "patched_xml": manifest_xml, "tmpdir": tmpdir}
+
+        result = {
+            "status": "success",
+            "patchedXmlPath": patched_xml_path,
+            "tmpDirPath": tmpdir,                   # <-- Ici le tmpdir est renvoyé avec la clé tmpDirPath
+            "removed_trackers": counts['trackers'],
+            "neutralized_onesignal": counts['onesignal']
+        }
+        return json.dumps(result)
 
     except Exception as e:
-        import traceback
-        log(f"❌ Error during APK processing: {e}", level='ERROR')
-        log(traceback.format_exc(), level='ERROR')
-        return {"success": False, "error": str(e)}
+        log(f"❌ Erreur: {e}")
+        return json.dumps({"status": "error", "message": str(e)})

@@ -33,5 +33,6 @@
     <string name="apk_saved_successfully">Modified APK saved!</string>
     <string name="error_saving_apk">Error saving APK: %1$s</string>
     <string name="error_saving_apk_short">Save error</string>
+    <string name="Output">outputlogs</string>
 
 </resources>
