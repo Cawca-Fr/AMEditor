@@ -1,94 +1,50 @@
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
-    id 'com.chaquo.python' version '16.1.0'
-}
-
-def keystorePropertiesFile = rootProject.file("keystore.properties")
-println "Keystore properties file exists: ${keystorePropertiesFile.exists()}"
-def keystoreProperties = new Properties()
-if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
-    println "Value of 'storeFile' from properties: ${keystoreProperties['storeFile']}"
+    id 'com.chaquo.python'
 }
 
 android {
     signingConfigs {
         debug {
-            if (keystorePropertiesFile.exists() && keystoreProperties['debugStoreFile'] != null) {
-                storeFile file(keystoreProperties['debugStoreFile'])
-                keyAlias keystoreProperties['debugKeyAlias']
-                storePassword keystoreProperties['debugStorePassword']
-                keyPassword keystoreProperties['debugKeyPassword']
-            } else {
-                println("Warning: Debug keystore properties not found or incomplete in keystore.properties. Default debug signing may be used.")
-            }
-        }
-        release {
-            if (keystorePropertiesFile.exists() && keystoreProperties['releaseStoreFile'] != null) {
-                storeFile file(keystoreProperties['releaseStoreFile'])
-                keyAlias keystoreProperties['releaseKeyAlias']
-                storePassword keystoreProperties['releaseStorePassword']
-                keyPassword keystoreProperties['releaseKeyPassword']
-            } else {
-                println("Warning: Keystore properties not found for release build.")
-            }
         }
     }
+
     namespace 'com.cawcafr.ameditor'
-    compileSdk 36
+    compileSdkVersion 36
 
     defaultConfig {
         applicationId "com.cawcafr.ameditor"
-        minSdk 24
+        minSdk 26
         targetSdk 36
-        //noinspection EditedTargetSdkVersion
         versionCode 1
         versionName "1.0"
-
+        
         ndk {
             //noinspection ChromeOsAbiSupport
-            abiFilters "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
-        }
-
-        python {
-            version "3.11"
-            buildPython "C:\\Users\\cawca\\AppData\\Local\\Programs\\Python\\Python311\\python.exe"
-            pip {
-                install "pyaxmlparser"
-            }
-
-
+            abiFilters "armeabi-v7a", "arm64-v8a"
         }
     }
+
     buildFeatures {
-        viewBinding true // optionnel mais recommandé
+        viewBinding true
     }
 
     buildTypes {
-        debug {
-            signingConfig signingConfigs.debug
-            debuggable true
-        }
         release {
-            minifyEnabled true
-            shrinkResources true
-            signingConfig signingConfigs.release
-            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
-    }
-
-    compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
     }
 
     kotlin {
-        jvmToolchain(17) // Ensure this matches your JavaVersion.VERSION_17
+        jvmToolchain(11)
     }
-
-  //  buildToolsVersion '36.0.0'
-    //ndkVersion '29.0.13599879'
+    
+    packagingOptions {
+        resources.excludes.add('META-INF/services/javax.xml.parsers.SAXParserFactory')
+        resources.excludes.add('META-INF/services/javax.xml.parsers.DocumentBuilderFactory')
+    }
 }
 
 dependencies {
@@ -96,9 +52,10 @@ dependencies {
     implementation libs.androidx.appcompat
     implementation libs.material
     implementation libs.androidx.activity.ktx
-    implementation libs.kxml2
+    //implementation 'com.github.apk-editor:aXML:master-SNAPSHOT'
+    implementation libs.commons.io.v2200
+
+    implementation libs.xercesimpl
     implementation libs.commons.lang3
-    implementation libs.commons.io
-    implementation libs.androidx.media3.exoplayer
-    implementation libs.androidx.room.compiler.processing.testing
+  //  implementation libs.commons.io
 }

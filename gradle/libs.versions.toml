@@ -1,58 +1,22 @@
 [versions]
-activityKtx = "1.11.0"
-agp = "8.10.1"
-apktool = "2.9.3"
-appcompat = "1.7.1"
-axml = "1.0"
-chaquopy = "16.1.0"
+apktoolLib = "2.12.1"
 commonsIo = "2.20.0"
-commonsLang3 = "3.19.0"
-constraintlayout = "2.2.1"
-coreKtxVersion = "1.16.0"
-kotlin = "2.0.21"
-coreKtx = "1.10.1"
-junit = "4.13.2"
-junitVersion = "1.1.5"
-espressoCore = "3.5.1"
-kxml2 = "2.3.0"
-lifecycleRuntimeKtx = "2.6.1"
-activityCompose = "1.8.0"
-composeBom = "2024.09.00"
-material = "1.12.0"
-media3Exoplayer = "1.8.0"
-roomCompilerProcessingTesting = "2.8.2"
+guava = "33.5.0-android"
+snakeyaml = "2.5"
 
 [libraries]
-androidx-activity-ktx = { module = "androidx.activity:activity-ktx", version.ref = "activityKtx" }
-androidx-appcompat = { module = "androidx.appcompat:appcompat", version.ref = "appcompat" }
-androidx-constraintlayout = { module = "androidx.constraintlayout:constraintlayout", version.ref = "constraintlayout" }
-androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
-androidx-core-ktx-v1160 = { module = "androidx.core:core-ktx", version.ref = "coreKtxVersion" }
-apktool = { module = "com.github.ibotpeaches:apktool", version.ref = "apktool" }
-axml = { module = "com.github.rednexus:axml", version.ref = "axml" }
-chaquopy = { module = "com.chaquo.python:chaquopy", version.ref = "chaquopy" }
-commons-io = { module = "commons-io:commons-io", version.ref = "commonsIo" }
-commons-lang3 = { module = "org.apache.commons:commons-lang3", version.ref = "commonsLang3" }
-junit = { group = "junit", name = "junit", version.ref = "junit" }
-androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "junitVersion" }
-androidx-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espressoCore" }
-androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "lifecycleRuntimeKtx" }
-androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "activityCompose" }
-androidx-compose-bom = { group = "androidx.compose", name = "compose-bom", version.ref = "composeBom" }
-androidx-ui = { group = "androidx.compose.ui", name = "ui" }
-androidx-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics" }
-androidx-ui-tooling = { group = "androidx.compose.ui", name = "ui-tooling" }
-androidx-ui-tooling-preview = { group = "androidx.compose.ui", name = "ui-tooling-preview" }
-androidx-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
-androidx-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
-androidx-material3 = { group = "androidx.compose.material3", name = "material3" }
-kxml2 = { module = "net.sf.kxml:kxml2", version.ref = "kxml2" }
-material = { module = "com.google.android.material:material", version.ref = "material" }
-androidx-media3-exoplayer = { group = "androidx.media3", name = "media3-exoplayer", version.ref = "media3Exoplayer" }
-androidx-room-compiler-processing-testing = { group = "androidx.room", name = "room-compiler-processing-testing", version.ref = "roomCompilerProcessingTesting" }
+androidx-core-ktx-v1160 = "androidx.core:core-ktx:1.16.0-alpha01"
+androidx-appcompat = "androidx.appcompat:appcompat:1.7.0"
+apktool-lib = { module = "org.apktool:apktool-lib", version.ref = "apktoolLib" }
+commons-io-v2200 = { module = "commons-io:commons-io", version.ref = "commonsIo" }
+guava = { module = "com.google.guava:guava", version.ref = "guava" }
+material = "com.google.android.material:material:1.13.0"
+androidx-activity-ktx = "androidx.activity:activity-ktx:1.9.1"
+commons-lang3 = "org.apache.commons:commons-lang3:3.17.0"
+commons-io = "commons-io:commons-io:2.16.1"
+androidx-media3-exoplayer = "androidx.media3:media3-exoplayer:1.4.0"
+apktool-lib-v261 = { group = "io.github.ibotpeaches", name = "apktool-lib", version = "2.6.1" }
+snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }
+xercesimpl = { group = "xerces", name = "xercesImpl", version = "2.12.2" }
 
 [plugins]
-android-application = { id = "com.android.application", version.ref = "agp" }
-kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
-kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
-
