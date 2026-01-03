@@ -10,6 +10,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import com.cawcafr.ameditor.util.ApkRebuilder
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 import java.io.File
@@ -100,34 +101,40 @@ class MainActivity : AppCompatActivity() {
             Thread {
                 try {
                     val apkPatcher = ApkManifestPatcher(this)
-                    // Fichier de sortie temporaire
-                    val outputApk = File(cacheDir, "patched_temp.apk")
+                    val workDir = File(cacheDir, "patch_work")
+                    workDir.mkdirs()
 
-                    // CORRECTION ICI : Appel de la bonne méthode 'patchApkManifest'
-                    when (val result = apkPatcher.patchApkManifest(currentApkFile, outputApk)) {
-                        is PatchResult.Success -> {
-                            runOnUiThread {
-                                val stats = result.stats
-                                appendLog("✅ SUCCÈS ! \n   - Composants supprimés : ${stats.removedComponents}\n   - Configs neutralisées : ${stats.neutralizedConfigs}\n")
-                                lastRebuiltApk = result.outputApk
-                                appendLog("🎉 APK prêt. Ouverture de la sauvegarde...\n")
+                    val patchedManifest = File(workDir, "AndroidManifest.xml")
 
-                                Toast.makeText(this@MainActivity, "Choisissez où sauvegarder l'APK patché", Toast.LENGTH_LONG).show()
+                    // Patch manifest and get the result
+                    val result = apkPatcher.patchApkManifest(currentApkFile, patchedManifest)
 
-                                // On propose le nom d'origine préfixé
-                                val suggestedName = "MOD_$originalFileName"
-                                saveApkLauncher.launch(suggestedName)
-                            }
+                    if (result is PatchResult.Success) {
+                        val rebuiltApk = File(cacheDir, "rebuilt_apk.apk")
+                        ApkRebuilder.rebuildApk(currentApkFile, patchedManifest, rebuiltApk)
+
+                        runOnUiThread {
+                            val stats = result.stats
+                            appendLog("✅ SUCCÈS ! \n   - Composants supprimés : ${stats.removedComponents}\n   - Configs neutralisées : ${stats.neutralizedConfigs}\n")
+                            lastRebuiltApk = rebuiltApk
+                            appendLog("🎉 APK prêt. Ouverture de la sauvegarde...\n")
+
+                            Toast.makeText(this@MainActivity, "Choisissez où sauvegarder l'APK patché", Toast.LENGTH_LONG).show()
+
+                            val suggestedName = "MOD_$originalFileName"
+                            saveApkLauncher.launch(suggestedName)
                         }
-                        is PatchResult.Error -> {
-                            runOnUiThread {
-                                appendLog("❌ Erreur fatale : ${result.message}\n")
-                            }
+                    } else if (result is PatchResult.Error) {
+                        runOnUiThread {
+                            appendLog("❌ Erreur fatale : ${result.message}\n")
                         }
                     }
                 } catch (e: Exception) {
                     runOnUiThread { appendLog("❌ Exception critique : ${e.message}\n") }
                     Log.e("ProcessApkThread", "Erreur Thread", e)
+                } finally {
+                    // Clean up working directory
+                    File(cacheDir, "patch_work").deleteRecursively()
                 }
             }.start()
         }
