@@ -10,9 +10,8 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import com.cawcafr.ameditor.util.ApkRebuilder
-import com.chaquo.python.Python
-import com.chaquo.python.android.AndroidPlatform
+// Plus besoin d'importer ApkRebuilder ici, c'est géré en interne par le Patcher
+// Plus d'imports Chaquopy (Python)
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -27,8 +26,9 @@ class MainActivity : AppCompatActivity() {
 
     private var apkFile: File? = null
     private var lastRebuiltApk: File? = null
-    private var originalFileName: String = "unknown.apk" // Pour garder le nom "Facebook.apk" par exemple
+    private var originalFileName: String = "unknown.apk"
 
+    // Gestionnaire pour sauvegarder le fichier final
     private val saveApkLauncher = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/vnd.android.package-archive")
     ) { uri: Uri? ->
@@ -43,11 +43,11 @@ class MainActivity : AppCompatActivity() {
                 Toast.makeText(this, "Sauvegarde réussie !", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Log.e("SaveApk", "Erreur sauvegarde", e)
-                appendLog("❌ Erreur sauvegarde: ${e.message}\n")
+                appendLog("❌ Erreur lors de la sauvegarde : ${e.message}\n")
                 Toast.makeText(this, "Erreur: ${e.message}", Toast.LENGTH_LONG).show()
             }
         } else {
-            appendLog("ℹ️ Sauvegarde annulée ou fichier manquant.\n")
+            appendLog("ℹ️ Sauvegarde annulée par l'utilisateur.\n")
         }
     }
 
@@ -55,29 +55,27 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        if (!Python.isStarted()) {
-            Python.start(AndroidPlatform(this))
-        }
+        // SUPPRESSION : Python.start() n'est plus nécessaire !
 
         selectApkButton = findViewById(R.id.selectApkButton)
         processButton = findViewById(R.id.processButton)
         logTextView = findViewById(R.id.logTextView)
         logScrollView = findViewById(R.id.logScrollView)
 
+        // Sélecteur de fichier (Input)
         val pickApkLauncher =
             registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
                 if (uri != null) {
-                    // On récupère le vrai nom (ex: insta.apk)
                     originalFileName = getFileName(uri) ?: "app.apk"
 
-                    // On copie dans le cache avec un nom fixe pour travailler dessus
-                    val cacheFileName = "selected_internal_apk.apk"
+                    // Copie en cache pour pouvoir le manipuler
+                    val cacheFileName = "selected_internal.apk"
                     val copiedFileInCache = copyUriToCache(uri, cacheFileName)
 
                     apkFile = copiedFileInCache
 
                     appendLog("📦 APK sélectionné : $originalFileName\n")
-                    processButton.isEnabled = true // On active le bouton seulement maintenant
+                    processButton.isEnabled = true
 
                 } else {
                     appendLog("⚠️ Aucun fichier sélectionné\n")
@@ -88,6 +86,7 @@ class MainActivity : AppCompatActivity() {
             pickApkLauncher.launch("application/vnd.android.package-archive")
         }
 
+        // Bouton "Lancer le Patch"
         processButton.setOnClickListener {
             val currentApkFile = apkFile
             if (currentApkFile == null) {
@@ -95,50 +94,61 @@ class MainActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            appendLog("⏳ Démarrage du patch de $originalFileName...\n")
+            appendLog("⏳ Démarrage du traitement de $originalFileName...\n")
+            processButton.isEnabled = false // Désactive le bouton pendant le traitement
 
-            // On lance le travail dans un Thread séparé pour ne pas bloquer l'interface
             Thread {
                 try {
                     val apkPatcher = ApkManifestPatcher(this)
-                    val workDir = File(cacheDir, "patch_work")
-                    workDir.mkdirs()
 
-                    val patchedManifest = File(workDir, "AndroidManifest.xml")
+                    // Définition du fichier de sortie FINAL (L'APK complet)
+                    // On ne gère plus les fichiers intermédiaires ici
+                    val finalOutputApk = File(cacheDir, "mod_${System.currentTimeMillis()}.apk")
 
-                    // Patch manifest and get the result
-                    val result = apkPatcher.patchApkManifest(currentApkFile, patchedManifest)
+                    // Appel unique qui fait tout : Extract -> Decode -> Patch -> Encode -> Rebuild
+                    val result = apkPatcher.patchApkManifest(currentApkFile, finalOutputApk)
 
-                    if (result is PatchResult.Success) {
-                        val rebuiltApk = File(cacheDir, "rebuilt_apk.apk")
-                        ApkRebuilder.rebuildApk(currentApkFile, patchedManifest, rebuiltApk)
+                    when (result) {
+                        is PatchResult.Success -> {
+                            runOnUiThread {
+                                val stats = result.stats
+                                appendLog("✅ SUCCÈS TOTAL !\n")
+                                appendLog("   - Composants supprimés : ${stats.removedComponents}\n")
+                                appendLog("   - Permissions supprimées : ${stats.neutralizedConfigs}\n") // J'ai réutilisé ce champ pour les perms dans le patcher
 
-                        runOnUiThread {
-                            val stats = result.stats
-                            appendLog("✅ SUCCÈS ! \n   - Composants supprimés : ${stats.removedComponents}\n   - Configs neutralisées : ${stats.neutralizedConfigs}\n")
-                            lastRebuiltApk = rebuiltApk
-                            appendLog("🎉 APK prêt. Ouverture de la sauvegarde...\n")
+                                lastRebuiltApk = result.outputApk
 
-                            Toast.makeText(this@MainActivity, "Choisissez où sauvegarder l'APK patché", Toast.LENGTH_LONG).show()
+                                appendLog("🎉 L'APK est prêt à être sauvegardé.\n")
+                                appendLog("⚠️ Rappel : Vous devrez signer cet APK manuellement avant de l'installer.\n")
 
-                            val suggestedName = "MOD_$originalFileName"
-                            saveApkLauncher.launch(suggestedName)
+                                Toast.makeText(this@MainActivity, "Patch terminé ! Sauvegardez le fichier.", Toast.LENGTH_LONG).show()
+
+                                // Lancer la sauvegarde
+                                val suggestedName = "MOD_$originalFileName"
+                                saveApkLauncher.launch(suggestedName)
+
+                                processButton.isEnabled = true
+                            }
                         }
-                    } else if (result is PatchResult.Error) {
-                        runOnUiThread {
-                            appendLog("❌ Erreur fatale : ${result.message}\n")
+                        is PatchResult.Error -> {
+                            runOnUiThread {
+                                appendLog("❌ ÉCHEC : ${result.message}\n")
+                                processButton.isEnabled = true
+                            }
                         }
                     }
                 } catch (e: Exception) {
-                    runOnUiThread { appendLog("❌ Exception critique : ${e.message}\n") }
+                    runOnUiThread {
+                        appendLog("❌ Exception critique : ${e.message}\n")
+                        processButton.isEnabled = true
+                    }
                     Log.e("ProcessApkThread", "Erreur Thread", e)
-                } finally {
-                    // Clean up working directory
-                    File(cacheDir, "patch_work").deleteRecursively()
                 }
             }.start()
         }
     }
+
+    // --- Utilitaires ---
 
     private fun getFileName(uri: Uri): String? {
         var fileName: String? = null
@@ -159,7 +169,6 @@ class MainActivity : AppCompatActivity() {
     private fun copyUriToCache(uri: Uri, desiredFileName: String): File {
         val inputStream: InputStream? = contentResolver.openInputStream(uri)
         val outFile = File(cacheDir, desiredFileName)
-        // Écraser si existe déjà
         if (outFile.exists()) outFile.delete()
 
         val outputStream = FileOutputStream(outFile)
@@ -170,8 +179,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun appendLog(message: String) {
-        logTextView.append(message)
-        // Scroll automatique vers le bas
-        logScrollView.post { logScrollView.fullScroll(ScrollView.FOCUS_DOWN) }
+        // Mise à jour de l'UI sur le thread principal si besoin
+        if (Thread.currentThread() == mainLooper.thread) {
+            logTextView.append(message)
+            logScrollView.post { logScrollView.fullScroll(ScrollView.FOCUS_DOWN) }
+        } else {
+            runOnUiThread {
+                logTextView.append(message)
+                logScrollView.post { logScrollView.fullScroll(ScrollView.FOCUS_DOWN) }
+            }
+        }
     }
 }
