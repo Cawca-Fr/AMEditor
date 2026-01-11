@@ -1,14 +1,14 @@
 <resources>
     <string name="app_name" translatable="false">ManifestEditor</string>
     <string name="selected_apk_message">Selected APK: %1$s</string>
-    <string name="processing_started">Starting Patch…\n"Please wait during processing.</string>
+    <string name="processing_started">Starting Patch…\nPlease wait during processing.</string>
     <string name="select_apk_first">Please select an APK file first.</string>
     <string name="process_apk_button_text" translatable="false">Process APK</string>
     <string name="select_apk_button_text" translatable="false">Select APK</string>
 
     <!-- Permissions -->
     <string name="permission_manage_storage_granted">Permission to access all files granted.</string>
-    <string name="permission_manage_storage_denied_long">"The permission to access all files is necessary for some advanced features. The application will continue with limited functionality."</string>
+    <string name="permission_manage_storage_denied_long">The permission to access all files is necessary for some advanced features. The application will continue with limited functionality.</string>
     <string name="permission_legacy_storage_granted">Legacy storage permissions granted.</string>
     <string name="permission_legacy_storage_denied">Legacy storage permissions are required for older versions of Android.</string>
 
@@ -21,13 +21,14 @@
     <!-- Script Python -->
     <string name="log_python_call_details_kotlin">Calling process_apk with:\nInput (cache): %1$s\nOutput (temp cache): %2$s</string>
     <string name="python_processing_complete_details">Python processing complete!\n  OneSignal found: %1$d\n  Trackers found: %2$d\n  Intents modified: %3$d</string>
-    <string name="prompt_save_location">"Please choose where to save the modified APK."</string>
+    <string name="prompt_save_location">Please choose where to save the modified APK.</string>
     <string name="python_script_unknown_error">Unknown Python script error or unexpected result.</string>
     <string name="python_script_error">Python error during patch: %1$s</string>
     <string name="python_error_exception">Python execution error: %1$s</string>
-    <string name="generic_error_exception">"Execution error: %1$s"</string>
+    <string name="generic_error_exception">Execution error: %1$s</string>
     <string name="permission_manage_storage_needed_for_save">The manage storage permission is necessary</string>
     <string name="manual_permission_grant_needed_manage_storage">The manage storage permission is needed manually</string>
+    
     <!-- Sauvegarde SAF -->
     <string name="error_saving_temp_file_missing">Temporary file to save not found.</string>
     <string name="apk_saved_successfully_at">Modified APK saved successfully at: %1$s</string>
@@ -36,5 +37,17 @@
     <string name="error_saving_apk_short">Save error</string>
     <string name="error_copying_apk" translatable="false">An error occured while copying the apk file</string>
     <string name="Output">outputlogs</string>
+
+    <!-- Logs MainActivity -->
+    <string name="log_header">--- Logs ---\n</string>
+    <string name="log_starting_patch">⏳ Démarrage du traitement de %1$s…\n</string>
+    <string name="log_apk_selected">📦 APK sélectionné : %1$s\n</string>
+    <string name="log_apk_saved_success">✅ APK sauvegardé avec succès !\n</string>
+    <string name="log_error_saving_apk">❌ Erreur lors de la sauvegarde : %1$s\n</string>
+    <string name="log_save_cancelled">ℹ️ Sauvegarde annulée par l\'utilisateur.\n</string>
+    <string name="log_no_file_selected">⚠️ Aucun fichier sélectionné\n</string>
+    <string name="log_success_total">🎉 SUCCÈS TOTAL !\n</string>
+    <string name="log_failure">❌ ÉCHEC : %1$s\n</string>
+    <string name="log_crash">❌ Crash: %1$s\n</string>
 
 </resources>

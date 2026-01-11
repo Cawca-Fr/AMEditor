@@ -2,13 +2,10 @@ package com.cawcafr.ameditor
 
 import android.content.Context
 import android.util.Log
-
-// Imports aXML
 import com.apk.axml.aXMLDecoder
 import com.apk.axml.aXMLEncoder
-
 import com.cawcafr.ameditor.util.ApkRebuilder
-import com.cawcafr.ameditor.util.ManifestSanitizer // Import de la nouvelle classe
+import com.cawcafr.ameditor.util.ManifestSanitizer
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -18,46 +15,49 @@ class ApkManifestPatcher(private val context: Context) {
 
     private val TAG = "ApkManifestPatcher"
 
-    fun patchApkManifest(inputApk: File, outputApk: File): PatchResult {
+    // On ajoute un paramètre 'logCallback' qui est une fonction optionnelle
+    fun patchApkManifest(
+        inputApk: File,
+        outputApk: File,
+        logCallback: (String) -> Unit = {}
+    ): PatchResult {
+
         val workDir = File(context.cacheDir, "patch_${System.currentTimeMillis()}")
 
         try {
             workDir.mkdirs()
 
-            // 1. Extraction
-            Log.d(TAG, "1. Extraction...")
+            logCallback("📂 Étape 1 : Extraction du manifest...")
             val binaryManifest = File(workDir, "AndroidManifest.xml")
             if (!extractManifestFromApk(inputApk, binaryManifest)) {
                 return PatchResult.Error("Échec extraction manifest")
             }
 
-            // 2. Décodage en Texte
-            Log.d(TAG, "2. Décodage...")
+            logCallback("🔓 Étape 2 : Décodage AXML vers Texte...")
             val xmlString = decodeManifestToString(binaryManifest)
             if (xmlString == null) {
-                return PatchResult.Error("Impossible de décoder le manifest en texte")
+                return PatchResult.Error("Impossible de décoder le manifest")
             }
 
-            // 3. Nettoyage via ManifestSanitizer (Remplace Python)
-            Log.d(TAG, "3. Nettoyage du XML...")
-            val cleanedXmlString = ManifestSanitizer.sanitize(xmlString)
+            logCallback("🛡️ Étape 3 : Analyse et nettoyage des traqueurs...")
+            // On passe le callback au sanitizer pour avoir les détails dans l'UI
+            val cleanedXmlString = ManifestSanitizer.sanitize(xmlString, logCallback)
 
-            // 4. Encodage en Binaire
-            Log.d(TAG, "4. Encodage...")
+            logCallback("🔒 Étape 4 : Encodage Texte vers AXML...")
             val newBinaryManifest = File(workDir, "AndroidManifest_patched.xml")
             if (!encodeStringToAxml(cleanedXmlString, newBinaryManifest)) {
                 return PatchResult.Error("Échec de l'encodage XML -> AXML")
             }
 
-            // 5. Reconstruction APK
-            Log.d(TAG, "5. Reconstruction APK...")
+            logCallback("🔨 Étape 5 : Reconstruction de l'APK (Clean META-INF)...")
             ApkRebuilder.rebuildApk(inputApk, newBinaryManifest, outputApk)
 
-            // (Stats simplifiées car le sanitizer gère les comptes en interne)
+            logCallback("✅ Terminé ! APK prêt.")
             return PatchResult.Success(outputApk, PatchStats(1, 1))
 
         } catch (e: Exception) {
             e.printStackTrace()
+            logCallback("❌ Exception: ${e.message}")
             return PatchResult.Error("Erreur: ${e.message}")
         } finally {
             workDir.deleteRecursively()

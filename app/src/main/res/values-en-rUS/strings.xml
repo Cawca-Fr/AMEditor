@@ -27,6 +27,7 @@
     <string name="generic_error_exception">Runtime error: %1$s</string>
     <string name="permission_manage_storage_needed_for_save">Manage storage permission is required.</string>
     <string name="manual_permission_grant_needed_manage_storage">Manage storage permission needs to be granted manually.</string>
+    
     <!-- SAF Save -->
     <string name="error_saving_temp_file_missing">Temporary file to save not found.</string>
     <string name="apk_saved_successfully_at">Modified APK saved successfully at: %1$s</string>
@@ -34,5 +35,17 @@
     <string name="error_saving_apk">Error saving APK: %1$s</string>
     <string name="error_saving_apk_short">Save error</string>
     <string name="Output">outputlogs</string>
+
+    <!-- MainActivity Logs -->
+    <string name="log_header">--- Logs ---\n</string>
+    <string name="log_starting_patch">⏳ Starting processing of %1$s...\n</string>
+    <string name="log_apk_selected">📦 APK selected: %1$s\n</string>
+    <string name="log_apk_saved_success">✅ APK saved successfully!\n</string>
+    <string name="log_error_saving_apk">❌ Error during save: %1$s\n</string>
+    <string name="log_save_cancelled">ℹ️ Save cancelled by user.\n</string>
+    <string name="log_no_file_selected">⚠️ No file selected\n</string>
+    <string name="log_success_total">🎉 TOTAL SUCCESS!\n</string>
+    <string name="log_failure">❌ FAILURE: %1$s\n</string>
+    <string name="log_crash">❌ Crash: %1$s\n</string>
 
 </resources>

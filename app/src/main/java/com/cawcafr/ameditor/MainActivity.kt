@@ -88,45 +88,39 @@ class MainActivity : AppCompatActivity() {
 
         // Bouton "Lancer le Patch"
         processButton.setOnClickListener {
-            val currentApkFile = apkFile
-            if (currentApkFile == null) {
-                appendLog("⚠️ Aucun APK sélectionné.\n")
-                return@setOnClickListener
-            }
+            val currentApkFile = apkFile ?: return@setOnClickListener
+
+            logTextView.text = getString(R.string.log_header)
 
             appendLog("⏳ Démarrage du traitement de $originalFileName...\n")
-            processButton.isEnabled = false // Désactive le bouton pendant le traitement
+            processButton.isEnabled = false
 
             Thread {
                 try {
                     val apkPatcher = ApkManifestPatcher(this)
-
-                    // Définition du fichier de sortie FINAL (L'APK complet)
-                    // On ne gère plus les fichiers intermédiaires ici
                     val finalOutputApk = File(cacheDir, "mod_${System.currentTimeMillis()}.apk")
 
-                    // Appel unique qui fait tout : Extract -> Decode -> Patch -> Encode -> Rebuild
-                    val result = apkPatcher.patchApkManifest(currentApkFile, finalOutputApk)
+                    // APPEL AVEC CALLBACK DE LOG
+                    val result = apkPatcher.patchApkManifest(
+                        currentApkFile,
+                        finalOutputApk
+                    ) { logMessage ->
+                        // Cette fonction est appelée depuis le Patcher/Sanitizer
+                        // On doit s'assurer de toucher l'UI sur le thread principal
+                        runOnUiThread {
+                            appendLog("$logMessage\n")
+                        }
+                    }
 
                     when (result) {
                         is PatchResult.Success -> {
                             runOnUiThread {
-                                val stats = result.stats
-                                appendLog("✅ SUCCÈS TOTAL !\n")
-                                appendLog("   - Composants supprimés : ${stats.removedComponents}\n")
-                                appendLog("   - Permissions supprimées : ${stats.neutralizedConfigs}\n") // J'ai réutilisé ce champ pour les perms dans le patcher
-
+                                appendLog("🎉 SUCCÈS TOTAL !\n")
                                 lastRebuiltApk = result.outputApk
+                                Toast.makeText(this@MainActivity, "Sauvegardez le fichier.", Toast.LENGTH_LONG).show()
 
-                                appendLog("🎉 L'APK est prêt à être sauvegardé.\n")
-                                appendLog("⚠️ Rappel : Vous devrez signer cet APK manuellement avant de l'installer.\n")
-
-                                Toast.makeText(this@MainActivity, "Patch terminé ! Sauvegardez le fichier.", Toast.LENGTH_LONG).show()
-
-                                // Lancer la sauvegarde
                                 val suggestedName = "MOD_$originalFileName"
                                 saveApkLauncher.launch(suggestedName)
-
                                 processButton.isEnabled = true
                             }
                         }
@@ -139,10 +133,9 @@ class MainActivity : AppCompatActivity() {
                     }
                 } catch (e: Exception) {
                     runOnUiThread {
-                        appendLog("❌ Exception critique : ${e.message}\n")
+                        appendLog("❌ Crash: ${e.message}\n")
                         processButton.isEnabled = true
                     }
-                    Log.e("ProcessApkThread", "Erreur Thread", e)
                 }
             }.start()
         }
