@@ -1,5 +1,6 @@
 package com.cawcafr.ameditor
 
+import android.annotation.SuppressLint
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -10,8 +11,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-// Plus besoin d'importer ApkRebuilder ici, c'est géré en interne par le Patcher
-// Plus d'imports Chaquopy (Python)
+import com.google.android.material.appbar.MaterialToolbar
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -39,23 +39,33 @@ class MainActivity : AppCompatActivity() {
                         inputStream.copyTo(outputStream)
                     }
                 }
-                appendLog("✅ APK sauvegardé avec succès !\n")
-                Toast.makeText(this, "Sauvegarde réussie !", Toast.LENGTH_SHORT).show()
+                appendLog("✅ APK saved successfully!\n")
+
+                // --- MODIFICATION ICI ---
+                // On affiche le chemin "nettoyé"
+                val readablePath = getReadablePathFromUri(uri)
+                appendLog("📂 Location: $readablePath\n")
+                // ------------------------
+
+                Toast.makeText(this, "Save successful!", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
-                Log.e("SaveApk", "Erreur sauvegarde", e)
-                appendLog("❌ Erreur lors de la sauvegarde : ${e.message}\n")
-                Toast.makeText(this, "Erreur: ${e.message}", Toast.LENGTH_LONG).show()
+                Log.e("SaveApk", "Save error", e)
+                appendLog("❌ Error saving APK: ${e.message}\n")
+                Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
             }
         } else {
-            appendLog("ℹ️ Sauvegarde annulée par l'utilisateur.\n")
+            appendLog("ℹ️ Save cancelled by user.\n")
         }
     }
 
+    @SuppressLint("SetTextI18n")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // SUPPRESSION : Python.start() n'est plus nécessaire !
+        // Configuration de la Toolbar
+        val toolbar: MaterialToolbar = findViewById(R.id.toolbar)
+        setSupportActionBar(toolbar)
 
         selectApkButton = findViewById(R.id.selectApkButton)
         processButton = findViewById(R.id.processButton)
@@ -74,11 +84,11 @@ class MainActivity : AppCompatActivity() {
 
                     apkFile = copiedFileInCache
 
-                    appendLog("📦 APK sélectionné : $originalFileName\n")
+                    appendLog("📦 APK selected: $originalFileName\n")
                     processButton.isEnabled = true
 
                 } else {
-                    appendLog("⚠️ Aucun fichier sélectionné\n")
+                    appendLog("⚠️ No file selected\n")
                 }
             }
 
@@ -90,9 +100,10 @@ class MainActivity : AppCompatActivity() {
         processButton.setOnClickListener {
             val currentApkFile = apkFile ?: return@setOnClickListener
 
-            logTextView.text = getString(R.string.log_header)
+            // Remplace R.string.log_header par un string en dur ou assure-toi que ta ressource est en anglais
+            logTextView.text = "--- Logs ---\n"
 
-            appendLog("⏳ Démarrage du traitement de $originalFileName...\n")
+            appendLog("⏳ Starting processing of $originalFileName...\n")
             processButton.isEnabled = false
 
             Thread {
@@ -105,19 +116,24 @@ class MainActivity : AppCompatActivity() {
                         currentApkFile,
                         finalOutputApk
                     ) { logMessage ->
-                        // Cette fonction est appelée depuis le Patcher/Sanitizer
-                        // On doit s'assurer de toucher l'UI sur le thread principal
-                        runOnUiThread {
-                            appendLog("$logMessage\n")
+                        // FILTRE AMÉLIORÉ
+                        // On ignore les composants désactivés, les permissions supprimées ET les Warnings non critiques
+                        if (!logMessage.startsWith("Disabled component:") &&
+                            !logMessage.startsWith("Removed permission:") &&
+                            !logMessage.startsWith("Warning:")) { // <-- AJOUT ICI (Masque les Warnings)
+
+                            runOnUiThread {
+                                appendLog("$logMessage\n")
+                            }
                         }
                     }
 
                     when (result) {
                         is PatchResult.Success -> {
                             runOnUiThread {
-                                appendLog("🎉 SUCCÈS TOTAL !\n")
+                                appendLog("🎉 SUCCESS!\n")
                                 lastRebuiltApk = result.outputApk
-                                Toast.makeText(this@MainActivity, "Sauvegardez le fichier.", Toast.LENGTH_LONG).show()
+                                Toast.makeText(this@MainActivity, "Please save the file.", Toast.LENGTH_LONG).show()
 
                                 val suggestedName = "MOD_$originalFileName"
                                 saveApkLauncher.launch(suggestedName)
@@ -126,7 +142,7 @@ class MainActivity : AppCompatActivity() {
                         }
                         is PatchResult.Error -> {
                             runOnUiThread {
-                                appendLog("❌ ÉCHEC : ${result.message}\n")
+                                appendLog("❌ FAILURE: ${result.message}\n")
                                 processButton.isEnabled = true
                             }
                         }
@@ -169,6 +185,24 @@ class MainActivity : AppCompatActivity() {
         inputStream?.close()
         outputStream.close()
         return outFile
+    }
+
+    private fun getReadablePathFromUri(uri: Uri): String {
+        var path = uri.path ?: return "Unknown"
+        // Décoder les caractères spéciaux (%20 -> espace, %2F -> /, etc.)
+        path = java.net.URLDecoder.decode(path, "UTF-8")
+
+        // Remplacer le format "primary:" par le chemin standard Android
+        if (path.contains("primary:")) {
+            path = path.replaceAfter("primary:", "") + "/storage/emulated/0/" + path.substringAfter("primary:")
+            path = path.replace("/document/primary:", "") // Nettoyage final
+        }
+        // Nettoyage spécifique aux DocumentsProvider
+        if (path.startsWith("/document/")) {
+            path = path.replace("/document/", "")
+        }
+
+        return path
     }
 
     private fun appendLog(message: String) {

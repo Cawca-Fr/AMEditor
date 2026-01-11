@@ -1,31 +1,28 @@
 package com.cawcafr.ameditor.util
 
-/**
- * Contient la base de données des signatures de traqueurs et la logique de correspondance.
- */
 object TrackersList {
 
-    /**
-     * Vérifie si le nom d'un composant correspond à un traqueur connu.
-     */
     fun isTracker(name: String): Boolean {
         if (name.isEmpty()) return false
-        // On vérifie si le nom contient l'un des patterns définis ci-dessous
         return PATTERNS.any { pattern ->
             name.contains(pattern, ignoreCase = true)
         }
     }
+
     /**
-     * Ces composants ne doivent PAS être supprimés (sinon crash),
-     * mais doivent être désactivés (android:enabled="false").
+     * Composants à DÉSACTIVER (android:enabled="false") pour éviter les NullPointerException.
      */
     val COMPONENTS_TO_DISABLE = listOf(
+        // OneSignal Critical components
         "com.onesignal.core.activities.PermissionsActivity",
-        "com.onesignal.core.services.SyncJobService"
+        "com.onesignal.core.services.SyncJobService",
+
+        // CORRECTION CRASH : Firebase Crashlytics ne doit pas être supprimé mais désactivé
+        "com.google.firebase.crashlytics",
+        "io.invertase.firebase.crashlytics",
+        "com.google.firebase.provider.FirebaseInitProvider" // Souvent responsable de l'init auto
     )
-    /**
-     * Liste des permissions à supprimer (Strictement basées sur le regex).
-     */
+
     val PERMISSIONS_TO_REMOVE = listOf(
         "com.google.android.gms.permission.AD_ID",
         "android.permission.AD_ID",
@@ -35,9 +32,6 @@ object TrackersList {
         "android.permission.ACCESS_ADSERVICES_TOPICS"
     )
 
-    /**
-     * Liste massive fusionnée (Regex + Paquets connus).
-     */
     private val PATTERNS = listOf(
         // --- GOOGLE & FIREBASE ---
         "com.google.android.gms.ads",
@@ -47,7 +41,7 @@ object TrackersList {
         "com.google.android.finsky.permission.BIND_GET_INSTALL_REFERRER_SERVICE",
         "google.android.datatransport",
         "com.google.firebase.analytics",
-        "com.google.firebase.crashlytics",
+        // RETIRÉ ICI CAR DÉPLACÉ DANS DISABLE : "com.google.firebase.crashlytics",
         "io.invertase.firebase",
         "android.billingclient",
         "com.android.vending.billing",
@@ -102,7 +96,7 @@ object TrackersList {
         "wandoujia.zendesk",
         "com.appbrain",
 
-        // --- ONESIGNAL (Ciblage précis) ---
+        // --- ONESIGNAL ---
         "onesignal.notificationDismissReceiver",
         "onesignal.notificationOpenedReceiver",
         "onesignal.FCMBroadcastReceiver",
@@ -118,7 +112,7 @@ object TrackersList {
         "onesignal.core.services",
         "onesignal.core.activities",
 
-        // --- AD NETWORKS (Réseaux Pub) ---
+        // --- AD NETWORKS ---
         "com.applovin",
         "com.mopub",
         "com.ironsource",
@@ -132,7 +126,6 @@ object TrackersList {
         "com.tapjoy",
         "com.fyber",
         "com.ogury",
-        "com.onesignal",
         "io.presage",
         "com.criteo",
         "com.pubmatic",
@@ -148,7 +141,7 @@ object TrackersList {
         "com.adxcorp",
         "com.mbridge.msdk",
         "com.mintegral",
-        "com.bytedance.sdk", // Pangle / TikTok
+        "com.bytedance.sdk",
         "com.pangle",
         "yandex.mobile.ads",
         "my.target",
@@ -193,11 +186,38 @@ object TrackersList {
         "braintreepayments",
         "io.adjoe.sdk",
 
-        // --- FLAGS (Meta-Data keys) ---
+        // --- CLASSES D'ACTIVITÉS SPÉCIFIQUES ---
+        "AdActivity",
+        "InterstitialActivity",
+        "BannerActivity",
+        "FullScreenActivity",
+        "MraidVideoActivity",
+        "MraidDialogActivity",
+        "VastActivity",
+        "OfferWallActivity",
+        "RewardedVideoActivity",
+        "ConsentActivity",
+        "OssLicenses",
+        "OutOfContextTestingActivity",
+        "AppLovinInterstitialActivity",
+        "AppLovinFullscreen",
+        "InneractiveFullscreen",
+        "MBRewardVideoActivity",
+        "MBInterstitialActivity",
+        "TJAdUnitActivity",
+        "SAInterstitialAd",
+        "SAVideoActivity",
+        "SAManagedAdActivity",
+        "AppOpenActivity",
+        "ProxyBillingActivity",
+        "SentryInitProvider",
+        "PreloadInfoContentProvider",
+
+        // --- FLAGS ---
         "google_analytics_",
         "firebase_performance_",
         "firebase_analytics_",
-        "firebase_crashlytics_",
+        "firebase_crashlytics_", // On supprime le flag, mais pas le composant Java
         "firebase_crash_collection",
         "app_measurement_",
         "app_data_collection",

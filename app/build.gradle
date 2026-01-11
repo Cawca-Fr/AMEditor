@@ -4,11 +4,6 @@ plugins {
 }
 
 android {
-    signingConfigs {
-        debug {
-        }
-    }
-
     namespace 'com.cawcafr.ameditor'
     compileSdkVersion 36
 
@@ -18,11 +13,6 @@ android {
         targetSdk 36
         versionCode 1
         versionName "1.0"
-        
-        ndk {
-            //noinspection ChromeOsAbiSupport
-            abiFilters "armeabi-v7a", "arm64-v8a"
-        }
     }
 
     buildFeatures {
@@ -31,7 +21,8 @@ android {
 
     buildTypes {
         release {
-            minifyEnabled false
+            minifyEnabled true
+            shrinkResources true
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }
     }
@@ -39,7 +30,7 @@ android {
     kotlin {
         jvmToolchain(11)
     }
-    
+
     packagingOptions {
         resources.excludes.add('META-INF/services/javax.xml.parsers.SAXParserFactory')
         resources.excludes.add('META-INF/services/javax.xml.parsers.DocumentBuilderFactory')
@@ -51,10 +42,8 @@ dependencies {
     implementation libs.androidx.appcompat
     implementation libs.material
     implementation libs.androidx.activity.ktx
-    //implementation 'com.github.apk-editor:aXML:master-SNAPSHOT'
     implementation libs.commons.io.v2200
 
     implementation libs.xercesimpl
     implementation libs.commons.lang3
-  //  implementation libs.commons.io
 }

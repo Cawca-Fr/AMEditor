@@ -1,23 +1,17 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+########################################
+# Xerces XML (Full Keep – safest option)
+########################################
+-keep class org.apache.xerces.** { *; }
+-dontwarn org.apache.xerces.**
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+########################################
+# AXML / Manifest Parsing (Reflection)
+########################################
+-keep class brut.** { *; }
+-keep class com.apk.axml.** { *; }
+-keep class apk.axml.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
-
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
--keep class com.chaquo.** { *; }
--dontwarn org.python.**
+########################################
+# Chaquopy Python Integration (If Used)
+########################################
+-keep class com.chaquo.python.** { *; }

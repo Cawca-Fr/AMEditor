@@ -26,11 +26,10 @@ object ManifestSanitizer {
 
             val doc = builder.parse(InputSource(StringReader(xmlContent)))
 
-            // CORRECTION CRASH : Nettoyage sécurisé des espaces vides
             try {
                 stripEmptyTextNodes(doc)
             } catch (e: Exception) {
-                logCallback("⚠️ Warning: Le formatage XML a échoué, on continue quand même.")
+                logCallback("Warning: XML formatting failed, proceeding with raw structure.")
             }
 
             var removedCount = 0
@@ -40,14 +39,12 @@ object ManifestSanitizer {
             removedCount += removePermissions(doc, logCallback)
             removedCount += removeIntentsAndPackages(doc, logCallback)
 
-            logCallback("🧹 Nettoyage terminé : $removedCount éléments supprimés, $disabledCount désactivés.")
+            logCallback("Sanitization finished: $removedCount elements removed, $disabledCount disabled.")
 
             convertDocToString(doc)
         } catch (e: Exception) {
-            Log.e(TAG, "Erreur lors du nettoyage XML", e)
-            // CORRECTION LOG : On affiche l'exception entière ($e) et pas juste le message (null)
-            logCallback("❌ Erreur XML Critique : $e")
-            // En cas d'erreur, on renvoie l'original (l'app ne sera pas patchée mais marchera)
+            Log.e(TAG, "XML Sanitization Error", e)
+            logCallback("Critical XML Error: $e")
             xmlContent
         }
     }
@@ -65,8 +62,6 @@ object ManifestSanitizer {
 
         for (tag in tagsToCheck) {
             val elements = application.getElementsByTagName(tag)
-
-            // On sépare la logique de collecte pour éviter les bugs d'index lors de la suppression
             val toRemove = mutableListOf<Node>()
             val toDisable = mutableListOf<Element>()
 
@@ -74,7 +69,7 @@ object ManifestSanitizer {
                 val element = elements.item(i) as Element
                 val name = getAndroidName(element)
 
-                if (TrackersList.COMPONENTS_TO_DISABLE.contains(name)) {
+                if (isComponentToDisable(name)) {
                     toDisable.add(element)
                 }
                 else if (TrackersList.isTracker(name)) {
@@ -82,22 +77,27 @@ object ManifestSanitizer {
                 }
             }
 
-            // Suppression
             for (node in toRemove) {
                 node.parentNode?.removeChild(node)
                 count++
             }
 
-            // Désactivation
             for (element in toDisable) {
                 val name = getAndroidName(element)
                 element.setAttributeNS(NS_ANDROID, "android:enabled", "false")
                 element.setAttributeNS(NS_ANDROID, "android:exported", "false")
-                logger("⚠️ Désactivé (Anti-Crash): $name")
+                logger("Disabled component: $name")
                 onDisable()
             }
         }
         return count
+    }
+
+    private fun isComponentToDisable(name: String): Boolean {
+        // Logique un peu plus permissive pour matcher les sous-packages
+        return TrackersList.COMPONENTS_TO_DISABLE.any {
+            name.contains(it, ignoreCase = true)
+        }
     }
 
     private fun removeIntentsAndPackages(doc: Document, logger: (String) -> Unit): Int {
@@ -107,6 +107,7 @@ object ManifestSanitizer {
         for (q in 0 until queriesNodes.length) {
             val queriesTag = queriesNodes.item(q) as Element
 
+            // Package tags
             val packageTags = queriesTag.getElementsByTagName("package")
             val pkgToRemove = mutableListOf<Node>()
             for (i in 0 until packageTags.length) {
@@ -115,10 +116,14 @@ object ManifestSanitizer {
             }
             pkgToRemove.forEach { it.parentNode?.removeChild(it); count++ }
 
+            // Intent tags
             val intentTags = queriesTag.getElementsByTagName("intent")
             val intentToRemove = mutableListOf<Node>()
             for (i in 0 until intentTags.length) {
-                if (shouldRemoveIntent(intentTags.item(i) as Element)) intentToRemove.add(intentTags.item(i))
+                val intentEl = intentTags.item(i) as Element
+                if (shouldRemoveIntent(intentEl)) {
+                    intentToRemove.add(intentEl)
+                }
             }
             intentToRemove.forEach { it.parentNode?.removeChild(it); count++ }
         }
@@ -152,7 +157,7 @@ object ManifestSanitizer {
         for (node in toRemove) {
             val name = getAndroidName(node as Element)
             node.parentNode?.removeChild(node)
-            logger("🚫 Permission retirée: $name")
+            logger("Removed permission: $name")
             count++
         }
         return count
@@ -164,19 +169,12 @@ object ManifestSanitizer {
         return name
     }
 
-    /**
-     * CORRECTION DU CRASH ICI :
-     * On vérifie si nodeValue est null avant de faire trim().
-     */
     private fun stripEmptyTextNodes(node: Node) {
         val childNodes = node.childNodes
         var i = 0
         while (i < childNodes.length) {
             val child = childNodes.item(i)
-
-            // Check null-safety pour nodeValue
             val value = child.nodeValue
-
             if (child.nodeType == Node.TEXT_NODE && (value == null || value.trim().isEmpty())) {
                 node.removeChild(child)
                 i--
@@ -190,7 +188,6 @@ object ManifestSanitizer {
     private fun convertDocToString(doc: Document): String {
         val transformer = TransformerFactory.newInstance().newTransformer()
         transformer.setOutputProperty(OutputKeys.INDENT, "yes")
-        // On augmente l'indentation pour bien voir la hiérarchie
         transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "4")
         transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes")
 

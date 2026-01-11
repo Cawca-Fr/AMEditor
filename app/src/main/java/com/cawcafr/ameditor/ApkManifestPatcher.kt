@@ -15,7 +15,6 @@ class ApkManifestPatcher(private val context: Context) {
 
     private val TAG = "ApkManifestPatcher"
 
-    // On ajoute un paramètre 'logCallback' qui est une fonction optionnelle
     fun patchApkManifest(
         inputApk: File,
         outputApk: File,
@@ -27,77 +26,61 @@ class ApkManifestPatcher(private val context: Context) {
         try {
             workDir.mkdirs()
 
-            logCallback("📂 Étape 1 : Extraction du manifest...")
+            // Step 1
+            logCallback("Step 1: Extracting AndroidManifest.xml...")
             val binaryManifest = File(workDir, "AndroidManifest.xml")
             if (!extractManifestFromApk(inputApk, binaryManifest)) {
-                return PatchResult.Error("Échec extraction manifest")
+                return PatchResult.Error("Manifest extraction failed")
             }
 
-            logCallback("🔓 Étape 2 : Décodage AXML vers Texte...")
+            // Step 2
+            logCallback("Step 2: Decoding: AXML -> XML...")
             val xmlString = decodeManifestToString(binaryManifest)
             if (xmlString == null) {
-                return PatchResult.Error("Impossible de décoder le manifest")
+                return PatchResult.Error("Failed to decode AXML")
             }
 
-            logCallback("🛡️ Étape 3 : Analyse et nettoyage des traqueurs...")
-            // On passe le callback au sanitizer pour avoir les détails dans l'UI
+            // Step 3
+            logCallback("Step 3: Patching...")
             val cleanedXmlString = ManifestSanitizer.sanitize(xmlString, logCallback)
 
-            logCallback("🔒 Étape 4 : Encodage Texte vers AXML...")
+            // Step 4
+            logCallback("Step 4: Encoding: XML -> AXML...")
             val newBinaryManifest = File(workDir, "AndroidManifest_patched.xml")
             if (!encodeStringToAxml(cleanedXmlString, newBinaryManifest)) {
-                return PatchResult.Error("Échec de l'encodage XML -> AXML")
+                return PatchResult.Error("Failed to encode XML to AXML")
             }
 
-            logCallback("🔨 Étape 5 : Reconstruction de l'APK (Clean META-INF)...")
+            // Step 5
+            logCallback("Step 5: Rebuilding APK...")
             ApkRebuilder.rebuildApk(inputApk, newBinaryManifest, outputApk)
 
-            logCallback("✅ Terminé ! APK prêt.")
+            logCallback("Process finished.")
             return PatchResult.Success(outputApk, PatchStats(1, 1))
 
         } catch (e: Exception) {
             e.printStackTrace()
-            logCallback("❌ Exception: ${e.message}")
-            return PatchResult.Error("Erreur: ${e.message}")
+            logCallback("Error: ${e.message}")
+            return PatchResult.Error("Error: ${e.message}")
         } finally {
             workDir.deleteRecursively()
         }
     }
 
-    /**
-     * Utilise aXMLDecoder pour obtenir le texte complet
-     */
     private fun decodeManifestToString(binaryFile: File): String? {
         return try {
             FileInputStream(binaryFile).use { fis ->
-                val decoder = aXMLDecoder(fis)
-                // Cette méthode existe dans ta librairie et renvoie tout le XML en String
-                decoder.decodeAsString()
+                aXMLDecoder(fis).decodeAsString()
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Erreur decodeAsString", e)
-            null
-        }
+        } catch (e: Exception) { null }
     }
 
-    /**
-     * Utilise aXMLEncoder pour repasser du String au Binaire
-     */
     private fun encodeStringToAxml(xmlContent: String, outputFile: File): Boolean {
         return try {
-            val encoder = aXMLEncoder()
-
-            // Appel à encodeString(String, Context) qui est dispo dans ton fichier aXMLEncoder.java
-            val binaryData = encoder.encodeString(xmlContent, context)
-
-            FileOutputStream(outputFile).use { fos ->
-                fos.write(binaryData)
-            }
+            val binaryData = aXMLEncoder().encodeString(xmlContent, context)
+            FileOutputStream(outputFile).use { fos -> fos.write(binaryData) }
             true
-        } catch (e: Exception) {
-            Log.e(TAG, "Erreur encodeString", e)
-            false
-        }
+        } catch (e: Exception) { false }
     }
 
     private fun extractManifestFromApk(apkFile: File, outputFile: File): Boolean {
@@ -113,10 +96,12 @@ class ApkManifestPatcher(private val context: Context) {
     }
 }
 
-// Data classes
-data class PatchStats(val removedComponents: Int, val neutralizedConfigs: Int)
-
 sealed class PatchResult {
     data class Success(val outputApk: File, val stats: PatchStats) : PatchResult()
     data class Error(val message: String) : PatchResult()
 }
+
+data class PatchStats(
+    val removedComponents: Int,
+    val neutralizedConfigs: Int
+)

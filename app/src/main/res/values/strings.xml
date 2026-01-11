@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name" translatable="false">ManifestEditor</string>
+    <string name="app_name" translatable="false">Manifest Patcher</string>
     <string name="selected_apk_message">Selected APK: %1$s</string>
     <string name="processing_started">Starting Patch…\nPlease wait during processing.</string>
     <string name="select_apk_first">Please select an APK file first.</string>
@@ -40,14 +40,14 @@
 
     <!-- Logs MainActivity -->
     <string name="log_header">--- Logs ---\n</string>
-    <string name="log_starting_patch">⏳ Démarrage du traitement de %1$s…\n</string>
-    <string name="log_apk_selected">📦 APK sélectionné : %1$s\n</string>
-    <string name="log_apk_saved_success">✅ APK sauvegardé avec succès !\n</string>
-    <string name="log_error_saving_apk">❌ Erreur lors de la sauvegarde : %1$s\n</string>
-    <string name="log_save_cancelled">ℹ️ Sauvegarde annulée par l\'utilisateur.\n</string>
-    <string name="log_no_file_selected">⚠️ Aucun fichier sélectionné\n</string>
-    <string name="log_success_total">🎉 SUCCÈS TOTAL !\n</string>
-    <string name="log_failure">❌ ÉCHEC : %1$s\n</string>
-    <string name="log_crash">❌ Crash: %1$s\n</string>
+    <string name="log_starting_patch">Starting processing of %1$s…\n</string>
+    <string name="log_apk_selected">APK selected: %1$s\n</string>
+    <string name="log_apk_saved_success">APK saved successfully!\n</string>
+    <string name="log_error_saving_apk">Error during save: %1$s\n</string>
+    <string name="log_save_cancelled">Save cancelled by user.\n</string>
+    <string name="log_no_file_selected">No file selected\n</string>
+    <string name="log_success_total">TOTAL SUCCESS!\n</string>
+    <string name="log_failure">FAILURE: %1$s\n</string>
+    <string name="log_crash">Crash: %1$s\n</string>
 
 </resources>
