@@ -20,7 +20,7 @@ object TrackersList {
         // CORRECTION CRASH : Firebase Crashlytics ne doit pas être supprimé mais désactivé
         "com.google.firebase.crashlytics",
         "io.invertase.firebase.crashlytics",
-        "com.google.firebase.provider.FirebaseInitProvider" // Souvent responsable de l'init auto
+        "com.google.firebase.provider.FirebaseInitProvider"
     )
 
     val PERMISSIONS_TO_REMOVE = listOf(
@@ -217,7 +217,7 @@ object TrackersList {
         "google_analytics_",
         "firebase_performance_",
         "firebase_analytics_",
-        "firebase_crashlytics_", // On supprime le flag, mais pas le composant Java
+        "firebase_crashlytics_",
         "firebase_crash_collection",
         "app_measurement_",
         "app_data_collection",

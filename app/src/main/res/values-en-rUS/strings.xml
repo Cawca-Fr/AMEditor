@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name" translatable="false">ManifestEditor</string>
+    <string name="app_name" translatable="false">Manifest Patcher</string>
     <string name="selected_apk_message">Selected APK: %1$s</string>
     <string name="processing_started">Starting Patch…\nPlease wait during processing.</string>
     <string name="select_apk_first">Please select an APK file first.</string>
@@ -47,5 +47,7 @@
     <string name="log_success_total">🎉 TOTAL SUCCESS!\n</string>
     <string name="log_failure">❌ FAILURE: %1$s\n</string>
     <string name="log_crash">❌ Crash: %1$s\n</string>
+    <string name="sign_apk">Sign APK</string>
+    <string name="import_signature">Import Signature</string>
 
 </resources>

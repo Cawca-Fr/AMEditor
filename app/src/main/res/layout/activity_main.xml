@@ -14,7 +14,8 @@
         android:layout_height="wrap_content"
         android:background="?attr/colorPrimary"
         android:title="@string/app_name"
-        android:titleTextColor="@android:color/white"
+        android:titleTextColor="@color/white"
+        app:titleTextAppearance="@style/TextAppearance.AMEditor.Toolbar.Title"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintTop_toTopOf="parent" />
@@ -51,6 +52,34 @@
             style="@style/Widget.MaterialComponents.Button.OutlinedButton"/>
     </LinearLayout>
 
+    <LinearLayout
+        android:id="@+id/signatureContainer"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="8dp"
+        app:layout_constraintTop_toBottomOf="@id/buttonContainer"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
+
+        <CheckBox
+            android:id="@+id/signCheckBox"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/sign_apk"
+            android:enabled="false" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/importKeyButton"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/import_signature"
+            android:layout_marginStart="16dp"
+            style="@style/Widget.MaterialComponents.Button.TextButton"/>
+    </LinearLayout>
+    
     <!-- Zone des logs -->
     <androidx.cardview.widget.CardView
         android:id="@+id/logCard"
@@ -59,7 +88,7 @@
         android:layout_margin="16dp"
         app:cardCornerRadius="12dp"
         app:cardElevation="4dp"
-        app:layout_constraintTop_toBottomOf="@id/buttonContainer"
+        app:layout_constraintTop_toBottomOf="@id/signatureContainer"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">

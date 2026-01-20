@@ -1,11 +1,11 @@
 plugins {
     id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
+    // id 'org.jetbrains.kotlin.android'
 }
 
 android {
     namespace 'com.cawcafr.ameditor'
-    compileSdkVersion 36
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.cawcafr.ameditor"
@@ -13,6 +13,13 @@ android {
         targetSdk 36
         versionCode 1
         versionName "1.0"
+    }
+
+    compileOptions {
+        // Enable desugaring to support apksig
+        coreLibraryDesugaringEnabled true
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
     }
 
     buildFeatures {
@@ -27,23 +34,27 @@ android {
         }
     }
 
-    kotlin {
-        jvmToolchain(11)
-    }
-
     packagingOptions {
         resources.excludes.add('META-INF/services/javax.xml.parsers.SAXParserFactory')
         resources.excludes.add('META-INF/services/javax.xml.parsers.DocumentBuilderFactory')
     }
 }
 
+kotlin {
+    jvmToolchain(11)
+}
+
 dependencies {
+    coreLibraryDesugaring libs.desugar.jdk.libs
     implementation libs.androidx.core.ktx.v1160
     implementation libs.androidx.appcompat
     implementation libs.material
     implementation libs.androidx.activity.ktx
     implementation libs.commons.io.v2200
-
+    implementation libs.prov
+    implementation libs.bcpkix.jdk15on
     implementation libs.xercesimpl
     implementation libs.commons.lang3
+    implementation libs.log4j
+    implementation libs.apksig
 }

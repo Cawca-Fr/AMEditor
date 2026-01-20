@@ -26,34 +26,35 @@ object ManifestSanitizer {
 
             val doc = builder.parse(InputSource(StringReader(xmlContent)))
 
-            try {
-                stripEmptyTextNodes(doc)
-            } catch (e: Exception) {
-                logCallback("Warning: XML formatting failed, proceeding with raw structure.")
-            }
+            // Nettoyage préventif des nœuds vides
+            try { stripEmptyTextNodes(doc) } catch (e: Exception) {}
 
             var removedCount = 0
             var disabledCount = 0
 
-            removedCount += removeElements(doc, logCallback) { disabledCount++ }
-            removedCount += removePermissions(doc, logCallback)
-            removedCount += removeIntentsAndPackages(doc, logCallback)
+            removedCount += removeElements(doc) { disabledCount++ }
+            removedCount += removePermissions(doc)
+            removedCount += removeIntentsAndPackages(doc)
 
-            logCallback("Sanitization finished: $removedCount elements removed, $disabledCount disabled.")
+            val totalPatched = removedCount + disabledCount
+            logCallback("Patched successfully !")
+            logCallback("Patched : $totalPatched elements")
 
             convertDocToString(doc)
         } catch (e: Exception) {
-            Log.e(TAG, "XML Sanitization Error", e)
-            logCallback("Critical XML Error: $e")
+            Log.e(TAG, "XML Error", e)
+            logCallback("Critical XML Error: ${e.javaClass.simpleName} - ${e.message}")
             xmlContent
         }
     }
 
-    private fun removeElements(doc: Document, logger: (String) -> Unit, onDisable: () -> Unit): Int {
+    private fun removeElements(doc: Document, onDisable: () -> Unit): Int {
         var count = 0
         val appNodes = doc.getElementsByTagName("application")
         if (appNodes.length == 0) return 0
-        val application = appNodes.item(0) as Element
+
+        // Safe Cast
+        val application = appNodes.item(0) as? Element ?: return 0
 
         val tagsToCheck = listOf(
             "activity", "activity-alias", "service", "receiver", "provider",
@@ -66,14 +67,17 @@ object ManifestSanitizer {
             val toDisable = mutableListOf<Element>()
 
             for (i in 0 until elements.length) {
-                val element = elements.item(i) as Element
-                val name = getAndroidName(element)
+                // Safe Cast : On vérifie que c'est bien un Element
+                val node = elements.item(i)
+                if (node !is Element) continue
+
+                val name = getAndroidName(node)
 
                 if (isComponentToDisable(name)) {
-                    toDisable.add(element)
+                    toDisable.add(node)
                 }
                 else if (TrackersList.isTracker(name)) {
-                    toRemove.add(element)
+                    toRemove.add(node)
                 }
             }
 
@@ -83,10 +87,8 @@ object ManifestSanitizer {
             }
 
             for (element in toDisable) {
-                val name = getAndroidName(element)
                 element.setAttributeNS(NS_ANDROID, "android:enabled", "false")
                 element.setAttributeNS(NS_ANDROID, "android:exported", "false")
-                logger("Disabled component: $name")
                 onDisable()
             }
         }
@@ -94,24 +96,23 @@ object ManifestSanitizer {
     }
 
     private fun isComponentToDisable(name: String): Boolean {
-        // Logique un peu plus permissive pour matcher les sous-packages
         return TrackersList.COMPONENTS_TO_DISABLE.any {
             name.contains(it, ignoreCase = true)
         }
     }
 
-    private fun removeIntentsAndPackages(doc: Document, logger: (String) -> Unit): Int {
+    private fun removeIntentsAndPackages(doc: Document): Int {
         var count = 0
         val queriesNodes = doc.getElementsByTagName("queries")
 
         for (q in 0 until queriesNodes.length) {
-            val queriesTag = queriesNodes.item(q) as Element
+            val queriesTag = queriesNodes.item(q) as? Element ?: continue
 
             // Package tags
             val packageTags = queriesTag.getElementsByTagName("package")
             val pkgToRemove = mutableListOf<Node>()
             for (i in 0 until packageTags.length) {
-                val el = packageTags.item(i) as Element
+                val el = packageTags.item(i) as? Element ?: continue
                 if (TrackersList.isTracker(getAndroidName(el))) pkgToRemove.add(el)
             }
             pkgToRemove.forEach { it.parentNode?.removeChild(it); count++ }
@@ -120,7 +121,7 @@ object ManifestSanitizer {
             val intentTags = queriesTag.getElementsByTagName("intent")
             val intentToRemove = mutableListOf<Node>()
             for (i in 0 until intentTags.length) {
-                val intentEl = intentTags.item(i) as Element
+                val intentEl = intentTags.item(i) as? Element ?: continue
                 if (shouldRemoveIntent(intentEl)) {
                     intentToRemove.add(intentEl)
                 }
@@ -133,20 +134,21 @@ object ManifestSanitizer {
     private fun shouldRemoveIntent(intentElement: Element): Boolean {
         val actions = intentElement.getElementsByTagName("action")
         for (i in 0 until actions.length) {
-            val name = getAndroidName(actions.item(i) as Element)
+            val el = actions.item(i) as? Element ?: continue
+            val name = getAndroidName(el)
             if (TrackersList.isTracker(name)) return true
         }
         return false
     }
 
-    private fun removePermissions(doc: Document, logger: (String) -> Unit): Int {
+    private fun removePermissions(doc: Document): Int {
         var count = 0
-        val root = doc.documentElement
+        val root = doc.documentElement ?: return 0
         val permissions = root.getElementsByTagName("uses-permission")
         val toRemove = mutableListOf<Node>()
 
         for (i in 0 until permissions.length) {
-            val element = permissions.item(i) as Element
+            val element = permissions.item(i) as? Element ?: continue
             val name = getAndroidName(element)
 
             if (TrackersList.PERMISSIONS_TO_REMOVE.contains(name) || TrackersList.isTracker(name)) {
@@ -155,9 +157,7 @@ object ManifestSanitizer {
         }
 
         for (node in toRemove) {
-            val name = getAndroidName(node as Element)
             node.parentNode?.removeChild(node)
-            logger("Removed permission: $name")
             count++
         }
         return count
@@ -174,6 +174,12 @@ object ManifestSanitizer {
         var i = 0
         while (i < childNodes.length) {
             val child = childNodes.item(i)
+            // Vérification de nullité
+            if (child == null) {
+                i++
+                continue
+            }
+
             val value = child.nodeValue
             if (child.nodeType == Node.TEXT_NODE && (value == null || value.trim().isEmpty())) {
                 node.removeChild(child)

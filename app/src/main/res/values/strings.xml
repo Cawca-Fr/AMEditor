@@ -49,5 +49,7 @@
     <string name="log_success_total">TOTAL SUCCESS!\n</string>
     <string name="log_failure">FAILURE: %1$s\n</string>
     <string name="log_crash">Crash: %1$s\n</string>
+    <string name="sign_apk">Sign APK</string>
+    <string name="import_signature">Import Signature</string>
 
 </resources>
