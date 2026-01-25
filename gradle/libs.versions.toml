@@ -1,6 +1,7 @@
 [versions]
 apksig = "8.13.2"
 apktoolLib = "2.12.1"
+bcprovJdk18on = "1.83"
 commonsIo = "2.21.0"
 guava = "33.5.0-android"
 prov = "1.58.0.0"
@@ -15,6 +16,7 @@ androidx-appcompat = "androidx.appcompat:appcompat:1.7.1"
 apksig = { module = "com.android.tools.build:apksig", version.ref = "apksig" }
 apktool-lib = { module = "org.apktool:apktool-lib", version.ref = "apktoolLib" }
 bcpkix-jdk15on = { module = "com.madgag.spongycastle:bcpkix-jdk15on", version.ref = "prov" }
+bcprov-jdk18on = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bcprovJdk18on" }
 commons-io-v2200 = { module = "commons-io:commons-io", version.ref = "commonsIo" }
 guava = { module = "com.google.guava:guava", version.ref = "guava" }
 material = "com.google.android.material:material:1.13.0"

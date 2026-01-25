@@ -57,4 +57,6 @@ dependencies {
     implementation libs.commons.lang3
     implementation libs.log4j
     implementation libs.apksig
+    implementation libs.bcprov.jdk18on
+
 }

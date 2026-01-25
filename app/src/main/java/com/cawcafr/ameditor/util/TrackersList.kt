@@ -16,8 +16,9 @@ object TrackersList {
         // OneSignal Critical components
         "com.onesignal.core.activities.PermissionsActivity",
         "com.onesignal.core.services.SyncJobService",
+        "com.revenuecat.purchases.amazon.purchasing.ProxyAmazonBillingActivity",
+        "com.sensorsdata.analytics.android.sdk.data.SensorsDataContentProvider",
 
-        // CORRECTION CRASH : Firebase Crashlytics ne doit pas être supprimé mais désactivé
         "com.google.firebase.crashlytics",
         "io.invertase.firebase.crashlytics",
         "com.google.firebase.provider.FirebaseInitProvider"

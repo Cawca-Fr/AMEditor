@@ -13,11 +13,13 @@ import android.widget.*
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.cawcafr.ameditor.util.SignerUtils
+import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.security.KeyStore
 
 class MainActivity : AppCompatActivity() {
 
@@ -28,19 +30,26 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var signCheckBox: CheckBox
     private lateinit var importKeyButton: Button
+    private lateinit var infoButton: ImageButton
 
     private var apkFile: File? = null
     private var lastRebuiltApk: File? = null
     private var originalFileName: String = "unknown.apk"
 
+    // Variables pour le mode Keystore
     private var userKeystoreFile: File? = null
     private var keystorePass: String = ""
     private var keyAlias: String = ""
     private var keyPass: String = ""
 
-    // Gestion de l'état "placeholder" des logs
+    // Variables pour le mode PK8/PEM
+    private var userPk8File: File? = null
+    private var userPemFile: File? = null
+    private var isUsingPk8Mode = false // Flag pour savoir quelle méthode utiliser
+
     private var isLogPlaceholderVisible = true
 
+    // Lanceur pour sauvegarder l'APK final
     private val saveApkLauncher = registerForActivityResult(
         ActivityResultContracts.CreateDocument("application/vnd.android.package-archive")
     ) { uri: Uri? ->
@@ -59,20 +68,61 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private val pickKeystoreLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+    // Lanceur pour le CERTIFICAT (.pem) - lancé uniquement après avoir choisi un .pk8
+    private val pickCertLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri != null) {
             val fileName = getFileName(uri)
-            // Vérification basique, mais ZipSigner gère JKS et BKS
-            if (fileName == null || (!fileName.endsWith(".jks", ignoreCase = true) && !fileName.endsWith(".bks", ignoreCase = true) && !fileName.endsWith(".keystore", ignoreCase = true))) {
-                Toast.makeText(this, "Please select a valid keystore (.jks)", Toast.LENGTH_LONG).show()
-                // On continue quand même si l'user insiste ? Non, pour l'instant on retourne.
+            if (fileName == null || (!fileName.endsWith(".pem", true) && !fileName.endsWith(".x509.pem", true) && !fileName.endsWith(".crt", true))) {
+                Toast.makeText(this, "Invalid Certificate. Please select a .pem or .x509.pem file.", Toast.LENGTH_LONG).show()
                 return@registerForActivityResult
             }
 
-            val cacheKeyFile = File(cacheDir, "user_keystore.jks")
+            val cachePem = File(cacheDir, "user_cert.pem")
+            copyUriToFile(uri, cachePem)
+            userPemFile = cachePem
+
+            // On a les deux fichiers (PK8 et PEM), on active le mode
+            verifyPk8PemPair()
+        }
+    }
+
+    // Lanceur Principal (Keystore OU PK8)
+    private val pickKeystoreLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
+        if (uri != null) {
+            val fileName = getFileName(uri)
+
+            // --- CAS 1 : C'est une clé privée PK8 ---
+            if (fileName != null && fileName.endsWith(".pk8", ignoreCase = true)) {
+                val cachePk8 = File(cacheDir, "user_key.pk8")
+                copyUriToFile(uri, cachePk8)
+                userPk8File = cachePk8
+
+                // On demande maintenant le certificat
+                Toast.makeText(this, "Private Key loaded. Now select the Certificate (.pem)", Toast.LENGTH_LONG).show()
+                pickCertLauncher.launch("*/*")
+                return@registerForActivityResult
+            }
+
+            // --- CAS 2 : C'est un Keystore classique (Uniquement PKCS12 sur Android) ---
+            if (
+                fileName == null ||
+                !(fileName.endsWith(".p12", true) || fileName.endsWith(".pfx", true))
+            ) {
+                Toast.makeText(
+                    this,
+                    "Only PKCS12 keystores (.p12 / .pfx) OR private keys (.pk8) are supported",
+                    Toast.LENGTH_LONG
+                ).show()
+                return@registerForActivityResult
+            }
+
+            // Traitement Keystore standard
+            val cacheKeyFile = File(cacheDir, "user_keystore.p12")
             copyUriToFile(uri, cacheKeyFile)
             userKeystoreFile = cacheKeyFile
 
+            // On désactive le mode PK8
+            isUsingPk8Mode = false
             showKeystorePasswordDialog()
         }
     }
@@ -81,16 +131,23 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
+        val toolbar: MaterialToolbar = findViewById(R.id.toolbar)
+        setSupportActionBar(toolbar)
+
         selectApkButton = findViewById(R.id.selectApkButton)
         processButton = findViewById(R.id.processButton)
         logTextView = findViewById(R.id.logTextView)
         logScrollView = findViewById(R.id.logScrollView)
-
         signCheckBox = findViewById(R.id.signCheckBox)
         importKeyButton = findViewById(R.id.importKeyButton)
+        infoButton = findViewById(R.id.infoButton)
 
         logTextView.text = "Output Logs"
         logTextView.setTextColor(Color.GRAY)
+
+        infoButton.setOnClickListener {
+            showInfoDialog()
+        }
 
         importKeyButton.setOnClickListener {
             pickKeystoreLauncher.launch("*/*")
@@ -115,7 +172,11 @@ class MainActivity : AppCompatActivity() {
         processButton.setOnClickListener {
             if (apkFile == null) return@setOnClickListener
 
-            if (signCheckBox.isChecked && userKeystoreFile == null) {
+            // Vérification de sécurité
+            val isKeystoreReady = (!isUsingPk8Mode && userKeystoreFile != null)
+            val isPk8Ready = (isUsingPk8Mode && userPk8File != null && userPemFile != null)
+
+            if (signCheckBox.isChecked && !isKeystoreReady && !isPk8Ready) {
                 Toast.makeText(this, "Please import a signature first", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
@@ -139,29 +200,39 @@ class MainActivity : AppCompatActivity() {
                     }
 
                     if (result is PatchResult.Success) {
-                        // Par défaut, le fichier final est le fichier patché non signé
                         var finalApk = result.outputApk
-                        var outputPrefix = "PATCHED_" // Préfixe par défaut
+                        var outputPrefix = "PATCHED_"
 
-                        if (shouldSign && userKeystoreFile != null) {
-                            runOnUiThread { appendLog("🔏 Signing APK with user key...\n") }
-
+                        if (shouldSign) {
                             val signedApk = File(cacheDir, "signed_mod.apk")
                             try {
-                                SignerUtils.signApk(
-                                    inputApk = unsignedApk,
-                                    outputApk = signedApk,
-                                    keystoreFile = userKeystoreFile!!,
-                                    keystorePass = keystorePass,
-                                    keyAlias = keyAlias,
-                                    keyPass = keyPass
-                                )
-                                // Si on arrive ici, la signature a réussi
+                                if (isUsingPk8Mode) {
+                                    // MODE 1 : PK8 + PEM
+                                    runOnUiThread { appendLog("🔏 Signing using PK8 Key + PEM Cert...\n") }
+                                    SignerUtils.signApkWithFilePair(
+                                        inputApk = unsignedApk,
+                                        outputApk = signedApk,
+                                        pk8File = userPk8File!!,
+                                        pemFile = userPemFile!!
+                                    )
+                                } else {
+                                    // MODE 2 : KEYSTORE
+                                    runOnUiThread { appendLog("🔏 Signing using Keystore (PKCS12)...\n") }
+                                    SignerUtils.signApk(
+                                        inputApk = unsignedApk,
+                                        outputApk = signedApk,
+                                        keystoreFile = userKeystoreFile!!,
+                                        keystorePass = keystorePass,
+                                        keyAlias = keyAlias,
+                                        keyPass = keyPass
+                                    )
+                                }
+
                                 finalApk = signedApk
-                                outputPrefix = "SIGNED_" // On change le préfixe
+                                outputPrefix = "SIGNED_"
                                 runOnUiThread { appendLog("✅ Signature applied successfully.\n") }
+
                             } catch (e: Exception) {
-                                // Si échec, on garde finalApk = unsignedApk et outputPrefix = "PATCHED_"
                                 runOnUiThread { appendLog("❌ Signature Failed: ${e.message}. Saving unsigned version.\n") }
                             }
                         } else {
@@ -169,10 +240,8 @@ class MainActivity : AppCompatActivity() {
                         }
 
                         lastRebuiltApk = finalApk
-
                         runOnUiThread {
                             appendLog("🎉 SUCCESS! Output ready.\n")
-                            // Utilisation du préfixe dynamique
                             saveApkLauncher.launch("$outputPrefix$originalFileName")
                             processButton.isEnabled = true
                         }
@@ -193,61 +262,88 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun showInfoDialog() {
+        AlertDialog.Builder(this)
+            .setTitle("Supported Signature Formats")
+            .setMessage("This app supports the following formats:\n\n" +
+                    "✅ PKCS12 (.p12, .pfx)\n" +
+                    "✅ Platform Keys (.pk8 + .pem)\n\n" +
+                    "❌ JKS and BKS files are NOT supported.\n\n" +
+                    "If you have an unsupported file (like .jks), please use 'MT Manager' or 'Ads regex++' to convert it to [.pk8 + .pem] or sign with.")
+            .setPositiveButton("Got it", null)
+            .show()
+    }
+
+    // --- Fonction de validation simple pour PK8/PEM ---
+    private fun verifyPk8PemPair() {
+        isUsingPk8Mode = true
+        signCheckBox.isEnabled = true
+        signCheckBox.isChecked = true
+        importKeyButton.text = "PK8/PEM Loaded ✅"
+        appendLog("🔑 Raw Key Pair loaded successfully.\n")
+        Toast.makeText(this, "Key Pair Loaded!", Toast.LENGTH_SHORT).show()
+    }
+
     private fun showKeystorePasswordDialog() {
         val context = this
-        val layout = LinearLayout(context)
-        layout.orientation = LinearLayout.VERTICAL
-        val padding = dpToPx(24)
-        layout.setPadding(padding, dpToPx(10), padding, 0)
+        val layout = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            val padding = dpToPx(24)
+            setPadding(padding, dpToPx(10), padding, 0)
+        }
 
-        // --- CHAMP 1 : Password ---
-        val passLayout = TextInputLayout(context)
-        passLayout.hint = "Password"
-        passLayout.boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
-        val inputPass = TextInputEditText(passLayout.context)
-        // TEXTE VISIBLE (Pas de points)
-        inputPass.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        // Password
+        val passLayout = TextInputLayout(context).apply {
+            hint = "Password"
+            boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+        }
+        val inputPass = TextInputEditText(passLayout.context).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
         passLayout.addView(inputPass)
-
         val params = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-        params.setMargins(0, 0, 0, dpToPx(16))
+        ).apply { setMargins(0, 0, 0, dpToPx(16)) }
         passLayout.layoutParams = params
         layout.addView(passLayout)
 
-        // --- CHAMP 2 : Alias ---
-        val aliasLayout = TextInputLayout(context)
-        aliasLayout.hint = "Alias"
-        aliasLayout.boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
-        val inputAlias = TextInputEditText(aliasLayout.context)
-        inputAlias.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        // Alias
+        val aliasLayout = TextInputLayout(context).apply {
+            hint = "Alias"
+            boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+        }
+        val inputAlias = TextInputEditText(aliasLayout.context).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
         aliasLayout.addView(inputAlias)
         aliasLayout.layoutParams = params
         layout.addView(aliasLayout)
 
-        // --- CHAMP 3 : Alias Password ---
-        val keyPassLayout = TextInputLayout(context)
-        keyPassLayout.hint = "Alias Password"
-        keyPassLayout.helperText = "Leave empty if same as keystore password"
-        keyPassLayout.boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
-        val inputKeyPass = TextInputEditText(keyPassLayout.context)
-        // TEXTE VISIBLE
-        inputKeyPass.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        // Alias password
+        val keyPassLayout = TextInputLayout(context).apply {
+            hint = "Alias Password"
+            helperText = "Leave empty if same as keystore password"
+            boxBackgroundMode = TextInputLayout.BOX_BACKGROUND_OUTLINE
+        }
+        val inputKeyPass = TextInputEditText(keyPassLayout.context).apply {
+            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+        }
         keyPassLayout.addView(inputKeyPass)
         layout.addView(keyPassLayout)
 
-        // --- Loading Spinner ---
-        val progressBar = ProgressBar(context)
-        progressBar.isIndeterminate = true
-        progressBar.visibility = View.GONE
+        // Progress
+        val progressBar = ProgressBar(context).apply {
+            isIndeterminate = true
+            visibility = View.GONE
+        }
         val progressParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT,
             ViewGroup.LayoutParams.WRAP_CONTENT
-        )
-        progressParams.gravity = Gravity.CENTER
-        progressParams.setMargins(0, dpToPx(10), 0, 0)
+        ).apply {
+            gravity = Gravity.CENTER
+            setMargins(0, dpToPx(10), 0, 0)
+        }
         progressBar.layoutParams = progressParams
         layout.addView(progressBar)
 
@@ -261,15 +357,14 @@ class MainActivity : AppCompatActivity() {
         dialog.show()
 
         dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-            val kPass = inputPass.text.toString()
-            val alias = inputAlias.text.toString()
-            var keyP = inputKeyPass.text.toString()
+            val kPass = inputPass.text?.toString()?.trim() ?: ""
+            var alias = inputAlias.text?.toString()?.trim() ?: ""
+            var keyP = inputKeyPass.text?.toString()?.trim() ?: ""
 
-            if (kPass.isEmpty() || alias.isEmpty()) {
-                Toast.makeText(context, "Password and Alias are required", Toast.LENGTH_SHORT).show()
+            if (kPass.isEmpty()) {
+                Toast.makeText(context, "Password is required", Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
-
             if (keyP.isEmpty()) keyP = kPass
 
             progressBar.visibility = View.VISIBLE
@@ -281,29 +376,54 @@ class MainActivity : AppCompatActivity() {
             Thread {
                 var success = false
                 var errorMsg = ""
-
                 try {
-                    // TEST DE CHARGEMENT STANDARD
-                    val keyStoreInstance = java.security.KeyStore.getInstance(java.security.KeyStore.getDefaultType())
-                    FileInputStream(userKeystoreFile).use { 
-                        keyStoreInstance.load(it, kPass.toCharArray()) 
-                    }
-                    
-                    if (keyStoreInstance.containsAlias(alias)) {
-                        // Test du mot de passe de la clé
-                        try {
-                            val entry = keyStoreInstance.getEntry(alias, java.security.KeyStore.PasswordProtection(keyP.toCharArray()))
-                            if (entry != null) success = true
-                            else errorMsg = "Cannot access key (wrong key password?)"
-                        } catch(e: Exception) {
-                             errorMsg = "Key Password Invalid"
-                        }
+                    if (userKeystoreFile == null || !userKeystoreFile!!.exists()) {
+                        errorMsg = "Keystore file missing."
                     } else {
-                        errorMsg = "Alias '$alias' not found"
+                        val ks = try {
+                            SignerUtils.loadKeyStore(userKeystoreFile!!, kPass)
+                        } catch (e: Exception) {
+                            throw RuntimeException("Keystore load failed: ${e.message}", e)
+                        }
+
+                        val aliases = mutableListOf<String>()
+                        val en = ks.aliases()
+                        while (en.hasMoreElements()) aliases.add(en.nextElement())
+
+                        if (alias.isEmpty()) {
+                            alias = if (aliases.size == 1) aliases[0] else ""
+                        }
+
+                        if (alias.isEmpty()) {
+                            errorMsg = if (aliases.isEmpty()) {
+                                "No aliases found in keystore."
+                            } else {
+                                "Please choose an alias. Available aliases: ${aliases.joinToString(", ")}"
+                            }
+                            throw RuntimeException(errorMsg)
+                        }
+
+                        if (!ks.containsAlias(alias)) {
+                            errorMsg = "Alias '$alias' not found. Available: ${aliases.joinToString(", ")}"
+                            throw RuntimeException(errorMsg)
+                        }
+
+                        try {
+                            val entry = ks.getEntry(alias, KeyStore.PasswordProtection(keyP.toCharArray()))
+                                    as? KeyStore.PrivateKeyEntry
+                            if (entry == null) {
+                                errorMsg = "Cannot access key: wrong alias or wrong key password."
+                                throw RuntimeException(errorMsg)
+                            } else {
+                                success = true
+                            }
+                        } catch (e: Exception) {
+                            throw RuntimeException("Key access failed: ${e.message}", e)
+                        }
                     }
-                    
                 } catch (e: Exception) {
-                    errorMsg = "Keystore load failed: ${e.message}"
+                    errorMsg = e.message ?: "Unknown error"
+                    runOnUiThread { appendLog("ERROR while verifying keystore: ${e::class.java.name}: ${e.message}\n") }
                 }
 
                 runOnUiThread {
@@ -322,7 +442,6 @@ class MainActivity : AppCompatActivity() {
                         signCheckBox.isChecked = true
                         importKeyButton.text = "Signature Loaded ✅"
                         appendLog("🔑 Signature loaded & Verified (Alias: $alias)\n")
-
                         dialog.dismiss()
                     } else {
                         Toast.makeText(context, "Verification Failed: $errorMsg", Toast.LENGTH_LONG).show()
