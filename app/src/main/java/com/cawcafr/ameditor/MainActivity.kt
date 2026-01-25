@@ -32,6 +32,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var importKeyButton: Button
     private lateinit var infoButton: ImageButton
 
+    private lateinit var previewButton: Button
+
     private var apkFile: File? = null
     private var lastRebuiltApk: File? = null
     private var originalFileName: String = "unknown.apk"
@@ -141,6 +143,7 @@ class MainActivity : AppCompatActivity() {
         signCheckBox = findViewById(R.id.signCheckBox)
         importKeyButton = findViewById(R.id.importKeyButton)
         infoButton = findViewById(R.id.infoButton)
+        previewButton = findViewById(R.id.previewButton)
 
         logTextView.text = "Output Logs"
         logTextView.setTextColor(Color.GRAY)
@@ -153,6 +156,11 @@ class MainActivity : AppCompatActivity() {
             pickKeystoreLauncher.launch("*/*")
         }
 
+        previewButton.setOnClickListener {
+            if (apkFile == null) return@setOnClickListener
+            showManifestPreview(apkFile!!)
+        }
+
         val pickApkLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
             if (uri != null) {
                 originalFileName = getFileName(uri) ?: "app.apk"
@@ -160,6 +168,8 @@ class MainActivity : AppCompatActivity() {
                 val copiedFile = File(cacheDir, cacheFileName)
                 copyUriToFile(uri, copiedFile)
                 apkFile = copiedFile
+                
+                previewButton.isEnabled = true
                 appendLog("📦 APK Selected: $originalFileName\n")
                 processButton.isEnabled = true
             }
@@ -271,6 +281,65 @@ class MainActivity : AppCompatActivity() {
                     "❌ JKS and BKS files are NOT supported.\n\n" +
                     "If you have an unsupported file (like .jks), please use 'MT Manager' or 'Ads regex++' to convert it to [.pk8 + .pem] or sign with.")
             .setPositiveButton("Got it", null)
+            .show()
+    }
+
+    private fun showManifestPreview(file: File) {
+        // 1. Afficher un chargement
+        val progressDialog = AlertDialog.Builder(this)
+            .setTitle("Reading Manifest...")
+            .setMessage("Please wait...")
+            .setCancelable(false)
+            .create()
+        progressDialog.show()
+
+        Thread {
+            try {
+                // 2. Appel à la nouvelle méthode de ApkManifestPatcher
+                val patcher = ApkManifestPatcher(this)
+                val xmlContent = patcher.fetchManifestContent(file)
+
+                runOnUiThread {
+                    progressDialog.dismiss()
+                    // 3. Afficher le résultat
+                    showXmlDialog(xmlContent)
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    progressDialog.dismiss()
+                    Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun showXmlDialog(xmlContent: String) {
+        // Création d'une vue ScrollView contenant le texte pour pouvoir défiler
+        val scrollView = ScrollView(this)
+        val textView = TextView(this)
+        
+        textView.text = xmlContent
+        textView.textSize = 12f
+        textView.setPadding(30, 30, 30, 30)
+        // Police monospace pour faire "code"
+        textView.typeface = android.graphics.Typeface.MONOSPACE 
+        textView.setTextColor(Color.BLACK)
+        // Permet de sélectionner/copier le texte
+        textView.setTextIsSelectable(true) 
+
+        scrollView.addView(textView)
+
+        AlertDialog.Builder(this)
+            .setTitle("Manifest Preview")
+            .setView(scrollView)
+            .setPositiveButton("Close", null)
+            .setNeutralButton("Copy") { _, _ ->
+                // Optionnel : Copier dans le presse-papier
+                val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                val clip = android.content.ClipData.newPlainText("Manifest XML", xmlContent)
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(this, "XML Copied to clipboard", Toast.LENGTH_SHORT).show()
+            }
             .show()
     }
 

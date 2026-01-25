@@ -83,6 +83,29 @@ class ApkManifestPatcher(private val context: Context) {
         } catch (e: Exception) { false }
     }
 
+    /**
+     * Extrait et décode le AndroidManifest.xml sans le modifier.
+     * Retourne le contenu XML sous forme de String.
+     */
+    fun fetchManifestContent(apkFile: File): String {
+        var zipFile: ZipFile? = null
+        try {
+            zipFile = ZipFile(apkFile)
+            val entry = zipFile.getEntry("AndroidManifest.xml")
+                ?: throw Exception("AndroidManifest.xml not found in APK")
+
+            // On décode le binaire AXML en Texte lisible
+            val inputStream = zipFile.getInputStream(entry)
+            return aXMLDecoder(inputStream).decodeAsString()
+                ?: throw Exception("Failed to decode AXML")
+
+        } catch (e: Exception) {
+            throw Exception("Preview Error: ${e.message}")
+        } finally {
+            zipFile?.close()
+        }
+    }
+
     private fun extractManifestFromApk(apkFile: File, outputFile: File): Boolean {
         return try {
             ZipFile(apkFile).use { zip ->
