@@ -201,4 +201,71 @@ object ManifestSanitizer {
         transformer.transform(DOMSource(doc), StreamResult(writer))
         return writer.toString()
     }
+
+    /**
+     * NOUVELLE FONCTION : Applique un patch personnalisé (Custom Patch)
+     */
+    fun applyCustomPatch(
+        xmlContent: String,
+        patchData: CustomPatchData,
+        logCallback: (String) -> Unit
+    ): String {
+        return try {
+            val factory = DocumentBuilderFactory.newInstance()
+            factory.isNamespaceAware = true
+            val builder = factory.newDocumentBuilder()
+            val doc = builder.parse(InputSource(StringReader(xmlContent)))
+
+            // Nettoyage format
+            try { stripEmptyTextNodes(doc) } catch (e: Exception) {}
+
+            var deleted = 0
+            var disabled = 0
+
+            val appNodes = doc.getElementsByTagName("application")
+            if (appNodes.length > 0) {
+                val application = appNodes.item(0) as Element
+
+                // On scanne TOUS les éléments enfants de <application>
+                val childNodes = application.childNodes
+                val toRemove = mutableListOf<Node>()
+
+                for (i in 0 until childNodes.length) {
+                    val node = childNodes.item(i)
+                    if (node !is Element) continue
+
+                    val name = getAndroidName(node)
+                    if (name.isEmpty()) continue
+
+                    // Vérification DELETE
+                    if (patchData.itemsToDelete.contains(name)) {
+                        toRemove.add(node)
+                        deleted++
+                        logCallback("Custom Delete: $name")
+                    }
+                    // Vérification DEACTIVATE
+                    else if (patchData.itemsToDisable.contains(name)) {
+                        node.setAttributeNS(NS_ANDROID, "android:enabled", "false")
+                        node.setAttributeNS(NS_ANDROID, "android:exported", "false")
+                        disabled++
+                        logCallback("Custom Disable: $name")
+                    }
+                }
+
+                // Application des suppressions
+                toRemove.forEach { it.parentNode.removeChild(it) }
+            }
+
+            // On pourrait aussi scanner les permissions si besoin, mais
+            // pour l'instant concentrons-nous sur les composants
+
+            logCallback("Custom Patch Applied: $deleted deleted, $disabled disabled.")
+            convertDocToString(doc)
+
+        } catch (e: Exception) {
+            Log.e(TAG, "Custom Patch Error", e)
+            logCallback("Error applying custom patch: ${e.message}")
+            xmlContent
+        }
+    }
 }

@@ -5,6 +5,7 @@ import android.util.Log
 import com.apk.axml.aXMLDecoder
 import com.apk.axml.aXMLEncoder
 import com.cawcafr.ameditor.util.ApkRebuilder
+import com.cawcafr.ameditor.util.CustomPatchData
 import com.cawcafr.ameditor.util.ManifestSanitizer
 import java.io.File
 import java.io.FileInputStream
@@ -116,6 +117,42 @@ class ApkManifestPatcher(private val context: Context) {
             }
             true
         } catch (e: Exception) { false }
+    }
+
+    // Ajoute cette fonction surchargée :
+    fun applyCustomPatch(
+        inputApk: File,
+        outputApk: File,
+        patchData: CustomPatchData,
+        logCallback: (String) -> Unit
+    ): PatchResult {
+        // ... (Le début est identique : dossier temp, extraction, décodage) ...
+        // Je ne remets pas tout le code pour être concis, copie la logique de patchApkManifest
+
+        val workDir = File(context.cacheDir, "custom_patch_${System.currentTimeMillis()}")
+        try {
+            workDir.mkdirs()
+            // ... Extract & Decode ...
+            val binaryManifest = File(workDir, "AndroidManifest.xml")
+            extractManifestFromApk(inputApk, binaryManifest)
+            val xmlString = decodeManifestToString(binaryManifest) ?: return PatchResult.Error("Decode failed")
+
+            logCallback("Step 3: Applying Custom Patch Rules...")
+
+            // APPEL A LA NOUVELLE FONCTION DU SANITIZER
+            val cleanedXmlString = ManifestSanitizer.applyCustomPatch(xmlString, patchData, logCallback)
+
+            // ... Encode & Rebuild ...
+            val newBinaryManifest = File(workDir, "AndroidManifest_patched.xml")
+            encodeStringToAxml(cleanedXmlString, newBinaryManifest)
+            ApkRebuilder.rebuildApk(inputApk, newBinaryManifest, outputApk)
+
+            return PatchResult.Success(outputApk, PatchStats(1, 1))
+        } catch (e: Exception) {
+            return PatchResult.Error(e.message ?: "Unknown error")
+        } finally {
+            workDir.deleteRecursively()
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 package com.cawcafr.ameditor
 
+import android.app.Activity
 import android.app.AlertDialog
 import android.graphics.Color
 import android.net.Uri
@@ -10,9 +11,12 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.*
+import android.content.Intent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import com.cawcafr.ameditor.util.SignerUtils
+import com.cawcafr.ameditor.util.CustomPatchData
+import com.cawcafr.ameditor.util.CustomPatchActivity
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textfield.TextInputLayout
@@ -33,6 +37,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var infoButton: ImageButton
 
     private lateinit var previewButton: Button
+    private lateinit var customPatchButton: Button
 
     private var apkFile: File? = null
     private var lastRebuiltApk: File? = null
@@ -175,6 +180,14 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        customPatchButton = findViewById(R.id.customPatchButton) // Ajoute ce bouton dans XML
+        customPatchButton.setOnClickListener {
+            if (apkFile == null) return@setOnClickListener
+
+            // On doit d'abord extraire le XML pour l'envoyer à l'éditeur
+            loadXmlForCustomEditor()
+        }
+
         selectApkButton.setOnClickListener {
             pickApkLauncher.launch("application/vnd.android.package-archive")
         }
@@ -209,58 +222,8 @@ class MainActivity : AppCompatActivity() {
                         runOnUiThread { appendLog("$msg\n") }
                     }
 
-                    if (result is PatchResult.Success) {
-                        var finalApk = result.outputApk
-                        var outputPrefix = "PATCHED_"
+                    handlePatchResult(result, unsignedApk, shouldSign)
 
-                        if (shouldSign) {
-                            val signedApk = File(cacheDir, "signed_mod.apk")
-                            try {
-                                if (isUsingPk8Mode) {
-                                    // MODE 1 : PK8 + PEM
-                                    runOnUiThread { appendLog("🔏 Signing using PK8 Key + PEM Cert...\n") }
-                                    SignerUtils.signApkWithFilePair(
-                                        inputApk = unsignedApk,
-                                        outputApk = signedApk,
-                                        pk8File = userPk8File!!,
-                                        pemFile = userPemFile!!
-                                    )
-                                } else {
-                                    // MODE 2 : KEYSTORE
-                                    runOnUiThread { appendLog("🔏 Signing using Keystore (PKCS12)...\n") }
-                                    SignerUtils.signApk(
-                                        inputApk = unsignedApk,
-                                        outputApk = signedApk,
-                                        keystoreFile = userKeystoreFile!!,
-                                        keystorePass = keystorePass,
-                                        keyAlias = keyAlias,
-                                        keyPass = keyPass
-                                    )
-                                }
-
-                                finalApk = signedApk
-                                outputPrefix = "SIGNED_"
-                                runOnUiThread { appendLog("✅ Signature applied successfully.\n") }
-
-                            } catch (e: Exception) {
-                                runOnUiThread { appendLog("❌ Signature Failed: ${e.message}. Saving unsigned version.\n") }
-                            }
-                        } else {
-                            runOnUiThread { appendLog("ℹ️ Skipping signature (User choice).\n") }
-                        }
-
-                        lastRebuiltApk = finalApk
-                        runOnUiThread {
-                            appendLog("🎉 SUCCESS! Output ready.\n")
-                            saveApkLauncher.launch("$outputPrefix$originalFileName")
-                            processButton.isEnabled = true
-                        }
-                    } else if (result is PatchResult.Error) {
-                        runOnUiThread {
-                            appendLog("❌ FAILED: ${result.message}\n")
-                            processButton.isEnabled = true
-                        }
-                    }
                 } catch (e: Exception) {
                     runOnUiThread {
                         appendLog("❌ Crash: ${e.message}\n")
@@ -269,6 +232,111 @@ class MainActivity : AppCompatActivity() {
                     e.printStackTrace()
                 }
             }.start()
+        }
+    }
+
+    private fun loadXmlForCustomEditor() {
+        // Affiche un loading...
+        Thread {
+            try {
+                val patcher = ApkManifestPatcher(this)
+                val xml = patcher.fetchManifestContent(apkFile!!)
+                
+                runOnUiThread {
+                    val intent = Intent(this, CustomPatchActivity::class.java)
+                    intent.putExtra("XML_CONTENT", xml)
+                    customPatchLauncher.launch(intent)
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    Toast.makeText(this, "Error fetching manifest: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    private fun startCustomPatchProcess(data: CustomPatchData) {
+        logTextView.text = ""
+        logTextView.setTextColor(Color.BLACK)
+        isLogPlaceholderVisible = false
+        appendLog("⏳ Starting CUSTOM patch...\n")
+        processButton.isEnabled = false
+        
+        // Check signatures settings...
+        val shouldSign = signCheckBox.isChecked
+
+        Thread {
+            try {
+                val patcher = ApkManifestPatcher(this)
+                val unsignedApk = File(cacheDir, "unsigned_custom.apk")
+                
+                // Appel de la méthode spécifique
+                val result = patcher.applyCustomPatch(apkFile!!, unsignedApk, data) { msg ->
+                    runOnUiThread { appendLog("$msg\n") }
+                }
+                
+                handlePatchResult(result, unsignedApk, shouldSign)
+            } catch (e: Exception) {
+                runOnUiThread {
+                    appendLog("❌ Crash: ${e.message}\n")
+                    processButton.isEnabled = true
+                }
+            }
+        }.start()
+    }
+
+    private fun handlePatchResult(result: PatchResult, unsignedApk: File, shouldSign: Boolean) {
+        if (result is PatchResult.Success) {
+            var finalApk = result.outputApk
+            var outputPrefix = "PATCHED_"
+
+            if (shouldSign) {
+                val signedApk = File(cacheDir, "signed_mod.apk")
+                try {
+                    if (isUsingPk8Mode) {
+                        // MODE 1 : PK8 + PEM
+                        runOnUiThread { appendLog("🔏 Signing using PK8 Key + PEM Cert...\n") }
+                        SignerUtils.signApkWithFilePair(
+                            inputApk = unsignedApk,
+                            outputApk = signedApk,
+                            pk8File = userPk8File!!,
+                            pemFile = userPemFile!!
+                        )
+                    } else {
+                        // MODE 2 : KEYSTORE
+                        runOnUiThread { appendLog("🔏 Signing using Keystore (PKCS12)...\n") }
+                        SignerUtils.signApk(
+                            inputApk = unsignedApk,
+                            outputApk = signedApk,
+                            keystoreFile = userKeystoreFile!!,
+                            keystorePass = keystorePass,
+                            keyAlias = keyAlias,
+                            keyPass = keyPass
+                        )
+                    }
+
+                    finalApk = signedApk
+                    outputPrefix = "SIGNED_"
+                    runOnUiThread { appendLog("✅ Signature applied successfully.\n") }
+
+                } catch (e: Exception) {
+                    runOnUiThread { appendLog("❌ Signature Failed: ${e.message}. Saving unsigned version.\n") }
+                }
+            } else {
+                runOnUiThread { appendLog("ℹ️ Skipping signature (User choice).\n") }
+            }
+
+            lastRebuiltApk = finalApk
+            runOnUiThread {
+                appendLog("🎉 SUCCESS! Output ready.\n")
+                saveApkLauncher.launch("$outputPrefix$originalFileName")
+                processButton.isEnabled = true
+            }
+        } else if (result is PatchResult.Error) {
+            runOnUiThread {
+                appendLog("❌ FAILED: ${result.message}\n")
+                processButton.isEnabled = true
+            }
         }
     }
 
@@ -285,24 +353,27 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showManifestPreview(file: File) {
-        // 1. Afficher un chargement
         val progressDialog = AlertDialog.Builder(this)
             .setTitle("Reading Manifest...")
-            .setMessage("Please wait...")
+            .setMessage("Parsing AXML...")
             .setCancelable(false)
             .create()
         progressDialog.show()
 
         Thread {
             try {
-                // 2. Appel à la nouvelle méthode de ApkManifestPatcher
+                // 1. Extraction (Travail lourd)
                 val patcher = ApkManifestPatcher(this)
                 val xmlContent = patcher.fetchManifestContent(file)
 
                 runOnUiThread {
                     progressDialog.dismiss()
-                    // 3. Afficher le résultat
-                    showXmlDialog(xmlContent)
+
+                    // 2. Lancement de la nouvelle Activité "Pro"
+                    val intent = Intent(this, XmlPreviewActivity::class.java)
+                    // On passe le contenu XML
+                    intent.putExtra("XML_CONTENT", xmlContent)
+                    startActivity(intent)
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -517,6 +588,18 @@ class MainActivity : AppCompatActivity() {
                     }
                 }
             }.start()
+        }
+    }
+
+    private val customPatchLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            val data = result.data?.getSerializableExtra("PATCH_DATA") as? CustomPatchData
+            if (data != null) {
+                // On lance le processus avec les données reçues
+                startCustomPatchProcess(data)
+            }
         }
     }
 

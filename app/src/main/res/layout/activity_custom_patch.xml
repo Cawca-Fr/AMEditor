@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="#FFFFFF"
+    android:fitsSystemWindows="true">
+
+    <androidx.appcompat.widget.Toolbar
+        android:id="@+id/toolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="#F8F9FA"
+        android:elevation="4dp"
+        app:contentInsetStart="0dp"
+        app:contentInsetEnd="0dp"
+        android:theme="@style/ThemeOverlay.AppCompat.ActionBar">
+
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="horizontal">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnModeDelete"
+                android:layout_width="120dp"
+                android:layout_height="36dp"
+                android:text="DELETE"
+                android:textSize="12sp"
+                app:cornerRadius="4dp"
+                app:strokeColor="#D32F2F"
+                app:strokeWidth="1dp"
+                android:textColor="#D32F2F"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_marginEnd="5dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"/>
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnModeDeactivate"
+                android:layout_width="120dp"
+                android:layout_height="36dp"
+                android:text="DEACTIVATE"
+                android:textSize="12sp"
+                app:cornerRadius="4dp"
+                app:strokeColor="#FBC02D"
+                app:strokeWidth="1dp"
+                android:textColor="#FBC02D"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_marginStart="5dp"
+                android:insetTop="0dp"
+                android:insetBottom="0dp"/>
+        </LinearLayout>
+
+    </androidx.appcompat.widget.Toolbar>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent">
+
+        <HorizontalScrollView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <TextView
+                android:id="@+id/xmlTextView"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:padding="30dp"
+                android:textSize="13sp"
+                android:textColor="#212121"
+                android:lineSpacingExtra="4dp"
+                android:text="Loading Manifest..." />
+        </HorizontalScrollView>
+    </ScrollView>
+</LinearLayout>
