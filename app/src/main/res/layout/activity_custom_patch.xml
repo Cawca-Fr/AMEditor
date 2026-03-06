@@ -1,79 +1,133 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#FFFFFF"
     android:fitsSystemWindows="true">
 
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/toolbar"
+    <!-- TOOLBAR -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="#F8F9FA"
-        android:elevation="4dp"
-        app:contentInsetStart="0dp"
-        app:contentInsetEnd="0dp"
-        android:theme="@style/ThemeOverlay.AppCompat.ActionBar">
+        android:layout_height="wrap_content"
+        android:fitsSystemWindows="true">
 
-        <LinearLayout
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_gravity="center"
-            android:orientation="horizontal">
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnModeDelete"
-                android:layout_width="120dp"
-                android:layout_height="36dp"
-                android:text="DELETE"
-                android:textSize="12sp"
-                app:cornerRadius="4dp"
-                app:strokeColor="#D32F2F"
-                app:strokeWidth="1dp"
-                android:textColor="#D32F2F"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_marginEnd="5dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"/>
-
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnModeDeactivate"
-                android:layout_width="120dp"
-                android:layout_height="36dp"
-                android:text="DEACTIVATE"
-                android:textSize="12sp"
-                app:cornerRadius="4dp"
-                app:strokeColor="#FBC02D"
-                app:strokeWidth="1dp"
-                android:textColor="#FBC02D"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_marginStart="5dp"
-                android:insetTop="0dp"
-                android:insetBottom="0dp"/>
-        </LinearLayout>
-
-    </androidx.appcompat.widget.Toolbar>
-
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent">
-
-        <HorizontalScrollView
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="?attr/actionBarSize" />
 
-            <TextView
-                android:id="@+id/xmlTextView"
-                android:layout_width="wrap_content"
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <!-- BOUTONS fixes sous le toolbar -->
+    <LinearLayout
+        android:id="@+id/buttonBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="?attr/colorSurface"
+        android:orientation="horizontal"
+        android:paddingHorizontal="12dp"
+        android:paddingVertical="8dp"
+        android:baselineAligned="false"
+        android:elevation="2dp">
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnModeDelete"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="42dp"
+            android:layout_weight="1"
+            android:text="🔴  Delete"
+            android:textSize="13sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            app:strokeColor="#D32F2F"
+            app:strokeWidth="1.5dp" />
+
+        <View android:layout_width="10dp" android:layout_height="0dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnModeDeactivate"
+            style="@style/Widget.Material3.Button.OutlinedButton"
+            android:layout_width="0dp"
+            android:layout_height="42dp"
+            android:layout_weight="1"
+            android:text="🟡  Deactivate"
+            android:textSize="13sp"
+            android:maxLines="1"
+            android:ellipsize="end"
+            app:strokeColor="#F9A825"
+            app:strokeWidth="1.5dp" />
+
+    </LinearLayout>
+
+    <com.google.android.material.divider.MaterialDivider
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        app:dividerColor="?attr/colorOutlineVariant" />
+
+    <!-- ═══════════════════════════════════════════════════════════
+         FrameLayout = conteneur pour superposer le scrollbar custom
+         par-dessus le NestedScrollView.
+         ═══════════════════════════════════════════════════════════ -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <!-- Scroll vertical + horizontal -->
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/xmlScrollView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:scrollbars="none">
+
+            <HorizontalScrollView
+                android:id="@+id/xmlHorizontalScroll"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:padding="30dp"
-                android:textSize="13sp"
-                android:textColor="#212121"
-                android:lineSpacingExtra="4dp"
-                android:text="Loading Manifest..." />
-        </HorizontalScrollView>
-    </ScrollView>
+                android:fillViewport="true"
+                android:scrollbars="none">
+
+                <TextView
+                    android:id="@+id/xmlTextView"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:lineSpacingMultiplier="1.4"
+                    android:padding="12dp"
+                    android:scrollHorizontally="true"
+                    android:textIsSelectable="false"
+                    android:textSize="12sp" />
+
+            </HorizontalScrollView>
+
+        </androidx.core.widget.NestedScrollView>
+
+        <!-- ═══════════════════════════════════════════════════════
+             SCROLLBAR CUSTOM
+             - gravity=end → collé à droite
+             - width=10dp → large pour faciliter le toucher
+             - height=56dp → taille initiale (sera recalculée en code)
+             - marginEnd=3dp → petit espace avec le bord
+             - background → sera changé dynamiquement (gris/violet)
+             - translationY → sera mis à jour au scroll
+             Sa hauteur réelle est calculée dans l'Activity avec
+             une hauteur minimale garantie (MIN_THUMB_PX).
+             ═══════════════════════════════════════════════════════ -->
+        <View
+            android:id="@+id/scrollbarThumb"
+            android:layout_width="10dp"
+            android:layout_height="56dp"
+            android:layout_gravity="end|top"
+            android:layout_marginEnd="3dp"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/scrollbar_thumb"
+            android:visibility="invisible" />
+
+    </FrameLayout>
+
 </LinearLayout>

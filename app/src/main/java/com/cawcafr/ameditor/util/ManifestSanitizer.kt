@@ -18,6 +18,9 @@ object ManifestSanitizer {
     private const val TAG = "ManifestSanitizer"
     private const val NS_ANDROID = "http://schemas.android.com/apk/res/android"
 
+    /**
+     * Nettoyage automatique standard (Trackers, etc.)
+     */
     fun sanitize(xmlContent: String, logCallback: (String) -> Unit): String {
         return try {
             val factory = DocumentBuilderFactory.newInstance()
@@ -27,7 +30,10 @@ object ManifestSanitizer {
             val doc = builder.parse(InputSource(StringReader(xmlContent)))
 
             // Nettoyage préventif des nœuds vides
-            try { stripEmptyTextNodes(doc) } catch (e: Exception) {}
+            try {
+                stripEmptyTextNodes(doc)
+            } catch (e: Exception) {
+            }
 
             var removedCount = 0
             var disabledCount = 0
@@ -48,12 +54,13 @@ object ManifestSanitizer {
         }
     }
 
+    // --- LOGIQUE STANDARD (Interne) ---
+
     private fun removeElements(doc: Document, onDisable: () -> Unit): Int {
         var count = 0
         val appNodes = doc.getElementsByTagName("application")
         if (appNodes.length == 0) return 0
 
-        // Safe Cast
         val application = appNodes.item(0) as? Element ?: return 0
 
         val tagsToCheck = listOf(
@@ -67,7 +74,6 @@ object ManifestSanitizer {
             val toDisable = mutableListOf<Element>()
 
             for (i in 0 until elements.length) {
-                // Safe Cast : On vérifie que c'est bien un Element
                 val node = elements.item(i)
                 if (node !is Element) continue
 
@@ -75,8 +81,7 @@ object ManifestSanitizer {
 
                 if (isComponentToDisable(name)) {
                     toDisable.add(node)
-                }
-                else if (TrackersList.isTracker(name)) {
+                } else if (TrackersList.isTracker(name)) {
                     toRemove.add(node)
                 }
             }
@@ -174,7 +179,6 @@ object ManifestSanitizer {
         var i = 0
         while (i < childNodes.length) {
             val child = childNodes.item(i)
-            // Vérification de nullité
             if (child == null) {
                 i++
                 continue
@@ -203,7 +207,8 @@ object ManifestSanitizer {
     }
 
     /**
-     * NOUVELLE FONCTION : Applique un patch personnalisé (Custom Patch)
+     * NOUVELLE FONCTION : Applique un patch basé sur des index précis.
+     * Résout le problème des doublons ou des éléments sans nom.
      */
     fun applyCustomPatch(
         xmlContent: String,
@@ -216,48 +221,73 @@ object ManifestSanitizer {
             val builder = factory.newDocumentBuilder()
             val doc = builder.parse(InputSource(StringReader(xmlContent)))
 
-            // Nettoyage format
             try { stripEmptyTextNodes(doc) } catch (e: Exception) {}
 
             var deleted = 0
             var disabled = 0
 
-            val appNodes = doc.getElementsByTagName("application")
-            if (appNodes.length > 0) {
-                val application = appNodes.item(0) as Element
+            // Compteurs pour suivre où on en est dans le fichier (comme dans l'Activity)
+            val tagCounters = mutableMapOf<String, Int>()
 
-                // On scanne TOUS les éléments enfants de <application>
-                val childNodes = application.childNodes
-                val toRemove = mutableListOf<Node>()
+            // Liste des nœuds à traiter (on ne peut pas modifier la liste pendant qu'on la parcourt)
+            val nodesToDelete = mutableListOf<Node>()
+            val nodesToDisable = mutableListOf<Element>()
 
-                for (i in 0 until childNodes.length) {
-                    val node = childNodes.item(i)
-                    if (node !is Element) continue
+            // On doit parcourir l'arbre complet dans le MÊME ORDRE que l'Activity (Depth First / Document Order)
+            // TreeWalker est parfait pour ça, mais une récursion simple suffit ici.
+            val allNodes = getAllNodesOrdered(doc.documentElement)
 
-                    val name = getAndroidName(node)
-                    if (name.isEmpty()) continue
+            for (node in allNodes) {
+                if (node !is Element) continue
 
-                    // Vérification DELETE
-                    if (patchData.itemsToDelete.contains(name)) {
-                        toRemove.add(node)
-                        deleted++
-                        logCallback("Custom Delete: $name")
-                    }
-                    // Vérification DEACTIVATE
-                    else if (patchData.itemsToDisable.contains(name)) {
-                        node.setAttributeNS(NS_ANDROID, "android:enabled", "false")
-                        node.setAttributeNS(NS_ANDROID, "android:exported", "false")
-                        disabled++
-                        logCallback("Custom Disable: $name")
+                val tagName = node.tagName // ex: "activity" ou "android:activity" selon namespace
+                // Nettoyage du nom de tag (parfois le parser ajoute des préfixes)
+                val cleanTagName = if (tagName.contains(":")) tagName.substringAfter(":") else tagName
+
+                val currentIndex = tagCounters.getOrDefault(cleanTagName, 0)
+
+                // Vérifier si ce nœud spécifique est dans notre liste de cibles
+                val target = patchData.targets.find {
+                    it.tagName == cleanTagName &&
+                            it.occurrenceIndex == currentIndex
+                }
+
+                if (target != null) {
+                    val nodeName = getAndroidName(node)
+
+                    // Double vérification optionnelle (si le nom existe, il doit correspondre)
+                    // Cela évite de supprimer le mauvais truc si le fichier a changé entre temps
+                    if (target.androidName != null && target.androidName != nodeName) {
+                        Log.w(TAG, "Mismatch for $cleanTagName #$currentIndex : expected ${target.androidName}, found $nodeName. Skipping.")
+                    } else {
+                        // Action !
+                        if (target.type == ActionType.DELETE) {
+                            nodesToDelete.add(node)
+                            logCallback("Delete: <$cleanTagName> index $currentIndex ($nodeName)")
+                            deleted++
+                        } else if (target.type == ActionType.DISABLE) {
+                            nodesToDisable.add(node)
+                            logCallback("Disable: <$cleanTagName> index $currentIndex ($nodeName)")
+                            disabled++
+                        }
                     }
                 }
 
-                // Application des suppressions
-                toRemove.forEach { it.parentNode.removeChild(it) }
+                // Incrémenter le compteur pour ce tag
+                tagCounters[cleanTagName] = currentIndex + 1
             }
 
-            // On pourrait aussi scanner les permissions si besoin, mais
-            // pour l'instant concentrons-nous sur les composants
+            // Application des modifications
+            for (node in nodesToDelete) {
+                node.parentNode?.removeChild(node)
+            }
+
+            for (element in nodesToDisable) {
+                if (element.parentNode != null) { // Si pas déjà supprimé
+                    element.setAttributeNS(NS_ANDROID, "android:enabled", "false")
+                    element.setAttributeNS(NS_ANDROID, "android:exported", "false")
+                }
+            }
 
             logCallback("Custom Patch Applied: $deleted deleted, $disabled disabled.")
             convertDocToString(doc)
@@ -267,5 +297,21 @@ object ManifestSanitizer {
             logCallback("Error applying custom patch: ${e.message}")
             xmlContent
         }
+    }
+
+    /**
+     * Récupère tous les nœuds dans l'ordre du document (plat) pour assurer la synchro des index
+     */
+    private fun getAllNodesOrdered(root: Node): List<Node> {
+        val list = mutableListOf<Node>()
+        list.add(root)
+        val children = root.childNodes
+        for (i in 0 until children.length) {
+            val child = children.item(i)
+            if (child.nodeType == Node.ELEMENT_NODE) {
+                list.addAll(getAllNodesOrdered(child))
+            }
+        }
+        return list
     }
 }
