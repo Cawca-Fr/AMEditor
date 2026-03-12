@@ -5,25 +5,36 @@
     android:id="@+id/mainLayout"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
+    android:fitsSystemWindows="true"
     tools:context=".MainActivity">
 
-    <!-- Barre de titre Material -->
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/toolbar"
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarLayout"
         android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:background="?attr/colorPrimary"
-        android:title="@string/app_name"
-        android:titleTextColor="@color/white"
-        android:paddingTop="30dp"
-        android:paddingBottom="1dp"
-        app:titleCentered="true"
-        app:titleTextAppearance="@style/TextAppearance.AMEditor.Toolbar.Title"
+        android:fitsSystemWindows="true"
         app:layout_constraintEnd_toEndOf="parent"
         app:layout_constraintStart_toStartOf="parent"
-        app:layout_constraintTop_toTopOf="parent" />
+        app:layout_constraintTop_toTopOf="parent">
 
-    <!-- Zone des boutons -->
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="?attr/colorPrimary"
+            android:title="@string/app_name"
+            android:titleTextColor="@color/white"
+            app:titleCentered="true"
+            app:titleTextAppearance="@style/TextAppearance.AMEditor.Toolbar.Title"
+            app:theme="@style/ThemeOverlay.AMEditor.Toolbar" />
+
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <!-- ═══════════════════════════════════════════════════════════════
+         3 boutons en ligne — chacun weight=1 donc taille identique
+         textSize 12sp + minWidth=0dp pour permettre la réduction
+         sur les très petits écrans (< 360dp)
+         ═══════════════════════════════════════════════════════════════ -->
     <LinearLayout
         android:id="@+id/buttonContainer"
         android:layout_width="0dp"
@@ -32,7 +43,7 @@
         android:gravity="center"
         android:padding="16dp"
         android:layout_marginTop="8dp"
-        app:layout_constraintTop_toBottomOf="@id/toolbar"
+        app:layout_constraintTop_toBottomOf="@id/appBarLayout"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
@@ -40,91 +51,130 @@
             android:id="@+id/selectApkButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginEnd="4dp"
             android:layout_weight="1"
+            android:layout_marginEnd="4dp"
             android:text="@string/select_apk_button_text"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:textSize="12sp"/>
+            android:textSize="12sp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="4dp"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/previewButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginHorizontal="4dp"
             android:layout_weight="1"
+            android:layout_marginHorizontal="4dp"
             android:text="Preview XML"
             android:enabled="false"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:textSize="12sp"/>
+            android:textSize="12sp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="4dp"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/processButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
-            android:layout_marginStart="4dp"
             android:layout_weight="1"
+            android:layout_marginStart="4dp"
             android:text="@string/process_apk_button_text"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-            android:textSize="12sp"/>
+            android:enabled="false"
+            android:textSize="12sp"
+            android:minWidth="0dp"
+            android:paddingHorizontal="4dp"
+            style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+
     </LinearLayout>
 
     <LinearLayout
         android:id="@+id/customPatchContainer"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center"
         android:paddingHorizontal="16dp"
-        app:layout_constraintTop_toBottomOf="@id/buttonContainer">
+        app:layout_constraintTop_toBottomOf="@id/buttonContainer"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/customPatchButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:text="Custom Patch"
-            style="@style/Widget.MaterialComponents.Button.UnelevatedButton"
-            android:textSize="12sp"/>
+            android:enabled="false"
+            android:textSize="12sp"
+            style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
+
     </LinearLayout>
 
+    <!-- ═══════════════════════════════════════════════════════════════
+         SIGNATURE ROW — 3 éléments en ligne :
+           [CheckBox  weight=1] [Button weight=1] [InfoButton 36dp fixe]
+
+         RÈGLES :
+         • CheckBox et Button ont layout_width="0dp" + weight="1"
+           → ils se partagent l'espace disponible à 50/50
+           → sur petit écran le texte est tronqué (ellipsize) mais visible
+         • minWidth="0dp" sur MaterialButton : sans ça, Material impose
+           une largeur minimale ~64dp qui peut écraser les autres éléments
+         • ImageButton fixe 36dp — toujours visible, jamais écrasé
+           car il n'a pas de weight et sa taille est fixe
+         • paddingHorizontal réduit à 4dp sur le bouton pour gagner de la place
+         ═══════════════════════════════════════════════════════════════ -->
     <LinearLayout
         android:id="@+id/signatureContainer"
-        android:layout_width="match_parent"
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="16dp"
-        android:paddingVertical="8dp"
+        android:paddingStart="12dp"
+        android:paddingEnd="8dp"
+        android:paddingVertical="4dp"
         app:layout_constraintTop_toBottomOf="@id/customPatchContainer"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
         <CheckBox
             android:id="@+id/signCheckBox"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
             android:text="@string/sign_apk"
-            android:enabled="false" />
+            android:enabled="false"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:minWidth="0dp" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/importKeyButton"
-            android:layout_width="wrap_content"
+            android:layout_width="0dp"
             android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
             android:text="@string/import_signature"
-            android:layout_marginStart="16dp"
-            style="@style/Widget.MaterialComponents.Button.TextButton"/>
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:minWidth="0dp"
+            android:paddingHorizontal="4dp"
+            style="@style/Widget.MaterialComponents.Button.TextButton" />
 
+        <!-- Taille fixe 36dp — jamais écrasé car pas de weight -->
         <ImageButton
             android:id="@+id/infoButton"
-            android:layout_width="40dp"
-            android:layout_height="40dp"
+            android:layout_width="36dp"
+            android:layout_height="36dp"
+            android:layout_marginStart="4dp"
             android:src="@drawable/ic_info"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:contentDescription="@string/info_icon"
-            android:layout_marginStart="8dp"
-            android:scaleType="centerInside" />
+            android:scaleType="centerInside"
+            android:padding="4dp" />
+
     </LinearLayout>
-    
-    <!-- Zone des logs -->
+
+    <!-- Zone des logs — prend tout l'espace restant -->
     <androidx.cardview.widget.CardView
         android:id="@+id/logCard"
         android:layout_width="0dp"
@@ -152,8 +202,10 @@
                 android:textSize="14sp"
                 android:textColor="@android:color/black"
                 android:text="@string/Output"
-                android:lineSpacingExtra="2dp"/>
+                android:lineSpacingExtra="2dp" />
+
         </ScrollView>
+
     </androidx.cardview.widget.CardView>
 
 </androidx.constraintlayout.widget.ConstraintLayout>

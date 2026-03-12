@@ -14,6 +14,8 @@ import android.widget.*
 import android.content.Intent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import com.cawcafr.ameditor.util.SignerUtils
 import com.cawcafr.ameditor.util.CustomPatchData
 import com.cawcafr.ameditor.util.CustomPatchActivity
@@ -40,6 +42,12 @@ class MainActivity : AppCompatActivity() {
     private lateinit var customPatchButton: Button
 
     private var apkFile: File? = null
+
+    /** Cache du manifest XML extrait en arrière-plan après sélection APK. */
+    private var cachedXmlContent: String? = null
+
+    /** Dialog affiché pendant l'import manifest en arrière-plan. */
+    private var importDialog: AlertDialog? = null
     private var lastRebuiltApk: File? = null
     private var originalFileName: String = "unknown.apk"
 
@@ -69,6 +77,11 @@ class MainActivity : AppCompatActivity() {
                 }
                 appendLog("✅ APK Saved successfully!\n")
                 Toast.makeText(this, "Saved!", Toast.LENGTH_SHORT).show()
+
+                // ── FIX CACHE : supprime l'APK patché dès qu'il est exporté ──────
+                // lastRebuiltApk est dans cacheDir — une fois copié vers Downloads,
+                // il est inutile de le garder (~154 MB libérés)
+                lastRebuiltApk?.delete()
             } catch (e: Exception) {
                 appendLog("❌ Save Error: ${e.message}\n")
             }
@@ -134,8 +147,68 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private val pickApkLauncher = registerForActivityResult(
+        ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri == null) return@registerForActivityResult
+
+        originalFileName = getFileName(uri) ?: "app.apk"
+        val copiedFile   = File(cacheDir, "selected_internal.apk")
+
+        // Étape 1 : copie rapide → retour immédiat dans l'app
+        try {
+            copyUriToFile(uri, copiedFile)
+        } catch (e: Exception) {
+            Toast.makeText(this, "Failed to copy APK: ${e.message}", Toast.LENGTH_LONG).show()
+            return@registerForActivityResult
+        }
+
+        apkFile        = copiedFile
+        cachedXmlContent = null  // reset du cache pour le nouvel APK
+        XmlContentHolder.clear()
+
+        setApkDependentButtonsEnabled(true)
+        appendLog("📦 APK Selected: $originalFileName\n")
+
+        // Étape 2 : extraction manifest en arrière-plan avec dialog
+        startManifestImport()
+    }
+
+    private fun startManifestImport() {
+        val dialogView = layoutInflater.inflate(R.layout.dialog_importing, null)
+        importDialog = AlertDialog.Builder(this)
+            .setView(dialogView)
+            .setCancelable(false)
+            .create()
+            .also { it.show() }
+
+        Thread {
+            try {
+                val xml = ApkManifestPatcher(this).fetchManifestContent(apkFile!!)
+                runOnUiThread {
+                    cachedXmlContent = xml
+                    XmlContentHolder.set(xml)                 // ← pré-chargé en avance
+                    importDialog?.dismiss()
+                    importDialog = null
+                    appendLog("✅ Manifest ready.\n")
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    importDialog?.dismiss()
+                    importDialog = null
+                    appendLog("⚠️ Manifest pre-load failed: ${e.message}\n")
+                }
+            }
+        }.start()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView)
+            .isAppearanceLightStatusBars = true    // icônes NOIRES
+
         setContentView(R.layout.activity_main)
 
         val toolbar: MaterialToolbar = findViewById(R.id.toolbar)
@@ -149,6 +222,10 @@ class MainActivity : AppCompatActivity() {
         importKeyButton = findViewById(R.id.importKeyButton)
         infoButton = findViewById(R.id.infoButton)
         previewButton = findViewById(R.id.previewButton)
+        customPatchButton = findViewById(R.id.customPatchButton)
+
+        setApkDependentButtonsEnabled(false)
+
 
         logTextView.text = "Output Logs"
         logTextView.setTextColor(Color.GRAY)
@@ -166,21 +243,6 @@ class MainActivity : AppCompatActivity() {
             showManifestPreview(apkFile!!)
         }
 
-        val pickApkLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
-            if (uri != null) {
-                originalFileName = getFileName(uri) ?: "app.apk"
-                val cacheFileName = "selected_internal.apk"
-                val copiedFile = File(cacheDir, cacheFileName)
-                copyUriToFile(uri, copiedFile)
-                apkFile = copiedFile
-                
-                previewButton.isEnabled = true
-                appendLog("📦 APK Selected: $originalFileName\n")
-                processButton.isEnabled = true
-            }
-        }
-
-        customPatchButton = findViewById(R.id.customPatchButton) // Ajoute ce bouton dans XML
         customPatchButton.setOnClickListener {
             if (apkFile == null) return@setOnClickListener
 
@@ -235,21 +297,42 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun setApkDependentButtonsEnabled(enabled: Boolean) {
+        previewButton.isEnabled     = enabled
+        customPatchButton.isEnabled = enabled
+        processButton.isEnabled     = enabled
+        // La checkbox garde son propre état (dépend de la clé, pas de l'APK)
+        // mais on la remet à jour visuellement pour cohérence
+        if (!enabled) signCheckBox.isEnabled = false
+    }
+
     private fun loadXmlForCustomEditor() {
-        // Affiche un loading...
+        val cached = cachedXmlContent
+        if (cached != null) {
+            XmlContentHolder.set(cached)                      // ← ICI, pas putExtra
+            val intent = Intent(this, CustomPatchActivity::class.java)
+            customPatchLauncher.launch(intent)
+            return
+        }
+
+        val toast = Toast.makeText(this, "Reading manifest…", Toast.LENGTH_SHORT)
+        toast.show()
+
         Thread {
             try {
-                val patcher = ApkManifestPatcher(this)
-                val xml = patcher.fetchManifestContent(apkFile!!)
-                
+                val xml = ApkManifestPatcher(this).fetchManifestContent(apkFile!!)
+                cachedXmlContent = xml
+
                 runOnUiThread {
+                    toast.cancel()
+                    XmlContentHolder.set(xml)                 // ← ICI, pas putExtra
                     val intent = Intent(this, CustomPatchActivity::class.java)
-                    intent.putExtra("XML_CONTENT", xml)
                     customPatchLauncher.launch(intent)
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    Toast.makeText(this, "Error fetching manifest: ${e.message}", Toast.LENGTH_LONG).show()
+                    toast.cancel()
+                    Toast.makeText(this, "Error: ${e.message}", Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
@@ -353,27 +436,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun showManifestPreview(file: File) {
+        val cached = cachedXmlContent
+        if (cached != null) {
+            XmlContentHolder.set(cached)                      // ← ICI, pas putExtra
+            startActivity(Intent(this, XmlPreviewActivity::class.java))
+            return
+        }
+
         val progressDialog = AlertDialog.Builder(this)
-            .setTitle("Reading Manifest...")
-            .setMessage("Parsing AXML...")
+            .setTitle("Reading Manifest…")
+            .setMessage("Parsing AXML…")
             .setCancelable(false)
             .create()
         progressDialog.show()
 
         Thread {
             try {
-                // 1. Extraction (Travail lourd)
-                val patcher = ApkManifestPatcher(this)
-                val xmlContent = patcher.fetchManifestContent(file)
+                val xmlContent = ApkManifestPatcher(this).fetchManifestContent(file)
+                cachedXmlContent = xmlContent
 
                 runOnUiThread {
                     progressDialog.dismiss()
-
-                    // 2. Lancement de la nouvelle Activité "Pro"
-                    val intent = Intent(this, XmlPreviewActivity::class.java)
-                    // On passe le contenu XML
-                    intent.putExtra("XML_CONTENT", xmlContent)
-                    startActivity(intent)
+                    XmlContentHolder.set(xmlContent)          // ← ICI, pas putExtra
+                    startActivity(Intent(this, XmlPreviewActivity::class.java))
                 }
             } catch (e: Exception) {
                 runOnUiThread {
@@ -384,35 +469,7 @@ class MainActivity : AppCompatActivity() {
         }.start()
     }
 
-    private fun showXmlDialog(xmlContent: String) {
-        // Création d'une vue ScrollView contenant le texte pour pouvoir défiler
-        val scrollView = ScrollView(this)
-        val textView = TextView(this)
-        
-        textView.text = xmlContent
-        textView.textSize = 12f
-        textView.setPadding(30, 30, 30, 30)
-        // Police monospace pour faire "code"
-        textView.typeface = android.graphics.Typeface.MONOSPACE 
-        textView.setTextColor(Color.BLACK)
-        // Permet de sélectionner/copier le texte
-        textView.setTextIsSelectable(true) 
 
-        scrollView.addView(textView)
-
-        AlertDialog.Builder(this)
-            .setTitle("Manifest Preview")
-            .setView(scrollView)
-            .setPositiveButton("Close", null)
-            .setNeutralButton("Copy") { _, _ ->
-                // Optionnel : Copier dans le presse-papier
-                val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                val clip = android.content.ClipData.newPlainText("Manifest XML", xmlContent)
-                clipboard.setPrimaryClip(clip)
-                Toast.makeText(this, "XML Copied to clipboard", Toast.LENGTH_SHORT).show()
-            }
-            .show()
-    }
 
     // --- Fonction de validation simple pour PK8/PEM ---
     private fun verifyPk8PemPair() {

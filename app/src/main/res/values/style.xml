@@ -8,7 +8,11 @@
         <item name="colorSecondary">@color/teal_200</item>
         <item name="colorSecondaryVariant">@color/teal_700</item>
         <item name="colorOnSecondary">@color/black</item>
-        
+
+        <!-- Status Bar configuration for light background with dark icons -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+
         <item name="toolbarStyle">@style/Widget.AMEditor.Toolbar</item>
     </style>
 
@@ -19,5 +23,17 @@
     <style name="TextAppearance.AMEditor.Toolbar.Title" parent="TextAppearance.Material3.TitleLarge">
         <item name="android:textStyle">bold</item>
         <item name="android:textColor">@color/white</item>
+    </style>
+
+    <style name="ThemeOverlay.AMEditor.Toolbar" parent="ThemeOverlay.AppCompat.ActionBar">
+        <item name="colorControlNormal">@color/white</item>
+        <item name="android:textColorPrimary">@color/white</item>
+        <item name="actionOverflowMenuStyle">@style/AMEditor.OverflowMenu</item>
+    </style>
+
+    <!-- Fond blanc + texte sombre → menu overflow lisible sur fond violet -->
+    <style name="AMEditor.OverflowMenu" parent="Widget.AppCompat.Light.PopupMenu.Overflow">
+        <item name="android:popupBackground">@android:color/white</item>
+        <item name="android:textColor">@color/black</item>
     </style>
 </resources>

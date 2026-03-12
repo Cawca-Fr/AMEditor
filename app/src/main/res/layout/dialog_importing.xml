@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    res/layout/dialog_importing.xml
+    Dialog affiché pendant l'extraction du manifest en arrière-plan.
+    Utilise un ProgressBar indéterminé + textes explicatifs.
+-->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:paddingHorizontal="28dp"
+    android:paddingTop="28dp"
+    android:paddingBottom="20dp">
+
+    <!-- Animation circulaire indéterminée -->
+    <ProgressBar
+        android:id="@+id/importProgressBar"
+        style="?android:attr/progressBarStyleLarge"
+        android:layout_width="56dp"
+        android:layout_height="56dp"
+        android:indeterminate="true" />
+
+    <!-- Titre principal -->
+    <TextView
+        android:id="@+id/tvImportTitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="18dp"
+        android:text="Importing APK"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textColor="#212121" />
+
+    <!-- Sous-titre informatif -->
+    <TextView
+        android:id="@+id/tvImportSubtitle"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:text="Reading AndroidManifest…"
+        android:textSize="13sp"
+        android:textColor="#757575"
+        android:gravity="center" />
+
+    <!-- Note rassurante -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="14dp"
+        android:text="You can continue using the app"
+        android:textSize="11sp"
+        android:textColor="#BDBDBD"
+        android:gravity="center" />
+
+</LinearLayout>

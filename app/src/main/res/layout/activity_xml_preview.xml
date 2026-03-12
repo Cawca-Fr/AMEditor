@@ -1,40 +1,155 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
+    android:fitsSystemWindows="true"
     android:background="#FFFFFF">
 
-    <androidx.appcompat.widget.Toolbar
-        android:id="@+id/toolbar"
+    <!-- TOOLBAR -->
+    <com.google.android.material.appbar.AppBarLayout
+        android:id="@+id/appBarLayout"
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="#F8F9FA"
-        android:elevation="4dp"
-        android:theme="@style/ThemeOverlay.AppCompat.ActionBar"
-        android:title="AndroidManifest.xml"
-        android:titleTextColor="#333333" />
+        android:layout_height="wrap_content"
+        android:fitsSystemWindows="true"
+        android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar">
 
-    <ScrollView
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:background="#FFFFFF">
-
-        <HorizontalScrollView
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
+            android:layout_height="?attr/actionBarSize"
+            android:background="#6200EE"
+            app:titleTextColor="@android:color/white"
+            android:theme="@style/ThemeOverlay.AMEditor.Toolbar"
+            app:popupTheme="@style/AMEditor.OverflowMenu" />
 
-            <TextView
-                android:id="@+id/codeTextView"
-                android:layout_width="wrap_content"
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <!-- BARRE DE RECHERCHE — masquée par défaut (View.GONE en code) -->
+    <LinearLayout
+        android:id="@+id/searchBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="#F8F9FA"
+        android:orientation="horizontal"
+        android:paddingHorizontal="8dp"
+        android:paddingVertical="6dp"
+        android:gravity="center_vertical"
+        android:elevation="2dp"
+        android:visibility="gone">
+
+        <androidx.appcompat.widget.AppCompatEditText
+            android:id="@+id/etSearch"
+            android:layout_width="0dp"
+            android:layout_height="36dp"
+            android:layout_weight="1"
+            android:background="@drawable/search_field_bg"
+            android:fontFamily="monospace"
+            android:hint="Search in XML…"
+            android:imeOptions="actionSearch"
+            android:inputType="text"
+            android:maxLines="1"
+            android:paddingHorizontal="10dp"
+            android:textSize="12sp" />
+
+        <!-- Compteur "3 / 12" -->
+        <TextView
+            android:id="@+id/tvSearchCount"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginHorizontal="6dp"
+            android:text=""
+            android:textSize="12sp"
+            android:textColor="#888888"
+            android:minWidth="42dp"
+            android:gravity="center" />
+
+        <ImageButton
+            android:id="@+id/btnSearchPrev"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_arrow_up"
+            android:contentDescription="Previous result" />
+
+        <ImageButton
+            android:id="@+id/btnSearchNext"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_arrow_down"
+            android:contentDescription="Next result" />
+
+        <ImageButton
+            android:id="@+id/btnSearchClose"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="2dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:src="@drawable/ic_close"
+            android:contentDescription="Close search" />
+
+    </LinearLayout>
+
+    <!-- Séparateur simple — View au lieu de MaterialDivider -->
+    <View
+        android:id="@+id/searchDivider"
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:background="#E0E0E0"
+        android:visibility="gone" />
+
+    <!-- ZONE XML + scrollbar custom superposé -->
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <androidx.core.widget.NestedScrollView
+            android:id="@+id/xmlScrollView"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:fillViewport="true"
+            android:scrollbars="none"
+            android:background="#FFFFFF">
+
+            <HorizontalScrollView
+                android:id="@+id/xmlHorizontalScroll"
+                android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:padding="16dp"
-                android:textSize="13sp"
-                android:textColor="#212121"
-                android:textIsSelectable="true"
-                android:lineSpacingExtra="2dp"
-                android:text="Loading..." />
-        </HorizontalScrollView>
-    </ScrollView>
+                android:fillViewport="true"
+                android:scrollbars="none">
+
+                <TextView
+                    android:id="@+id/codeTextView"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:lineSpacingMultiplier="1.4"
+                    android:padding="12dp"
+                    android:scrollHorizontally="true"
+                    android:textIsSelectable="true"
+                    android:textSize="12sp"
+                    android:text="Loading…" />
+
+            </HorizontalScrollView>
+
+        </androidx.core.widget.NestedScrollView>
+
+        <!-- Scrollbar custom : taille minimale garantie (gérée en code) -->
+        <View
+            android:id="@+id/scrollbarThumb"
+            android:layout_width="10dp"
+            android:layout_height="56dp"
+            android:layout_gravity="end|top"
+            android:layout_marginEnd="3dp"
+            android:layout_marginTop="4dp"
+            android:background="@drawable/scrollbar_thumb"
+            android:visibility="invisible" />
+
+    </FrameLayout>
+
 </LinearLayout>

@@ -5,7 +5,10 @@ import android.app.Activity
 import android.content.Intent
 import android.graphics.Color
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.text.Spannable
+import android.text.SpannableString
 import android.text.style.BackgroundColorSpan
 import android.util.Log
 import android.view.GestureDetector
@@ -17,8 +20,12 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.graphics.toColorInt
+import androidx.core.text.PrecomputedTextCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.widget.TextViewCompat
 import com.cawcafr.ameditor.R
+import com.cawcafr.ameditor.XmlContentHolder
 import java.util.Stack
 import java.util.regex.Pattern
 
@@ -30,36 +37,41 @@ class CustomPatchActivity : AppCompatActivity() {
     private lateinit var xmlScrollView: androidx.core.widget.NestedScrollView
     private lateinit var scrollbarThumb: android.view.View
 
-    private var minThumbPx = 0
-    // Dernier handler pour le fade-out auto du scrollbar
-    private val fadeHandler = android.os.Handler(android.os.Looper.getMainLooper())
-    private val fadeRunnable = Runnable {
-        scrollbarThumb.animate().alpha(0f).setDuration(600).start()
-    }
-    private var currentMode = Mode.DELETE
-    private var xmlContent = ""
+    private var minThumbPx   = 0
+    private val fadeHandler  = Handler(Looper.getMainLooper())
+    private val fadeRunnable = Runnable { scrollbarThumb.animate().alpha(0f).setDuration(600).start() }
 
-    // ── FIX HASHCODE ────────────────────────────────────────────────────────
-    // On parse les positions depuis le texte AFFICHÉ (après highlight),
-    // pas depuis xmlContent brut. Les deux peuvent différer si le
-    // highlighter modifie des caractères (newlines, espaces, etc.).
+    private var currentMode   = Mode.DELETE
+    private var xmlContent    = ""
     private var displayedText = ""
 
-    // Garde-fou : taps ignorés tant que le parsing n'est pas terminé
     @Volatile private var isParsed = false
 
-    private val allNodes   = mutableListOf<XmlNode>()
-    private val nodeStates = mutableMapOf<Int, Mode>()
+    private val allNodes    = mutableListOf<XmlNode>()
+    private val nodeStates  = mutableMapOf<Int, Mode>()
     private val activeSpans = mutableMapOf<Int, BackgroundColorSpan>()
 
-    // ── Undo / Redo ─────────────────────────────────────────────────────────
-    private val undoStack = ArrayDeque<Map<Int, Mode>>()
-    private val redoStack = ArrayDeque<Map<Int, Mode>>()
+    private val undoStack    = ArrayDeque<Map<Int, Mode>>()
+    private val redoStack    = ArrayDeque<Map<Int, Mode>>()
     private var undoMenuItem: MenuItem? = null
     private var redoMenuItem: MenuItem? = null
 
+    private var loadingDialog: AlertDialog? = null
+
+    // ── Viewport colorization ─────────────────────────────────────────────────
+    private data class SpanInfo(val span: Any, val start: Int, val end: Int, val flags: Int)
+
+    private var allSpanInfos: List<SpanInfo> = emptyList()
+    private val appliedHighlightSpans = mutableMapOf<Int, Any>()
+    private val VIEWPORT_BUFFER = 60_000
+    private val VIEWPORT_EVICT  = VIEWPORT_BUFFER * 2
+    private val viewportHandler  = Handler(Looper.getMainLooper())
+    private var viewportRunnable: Runnable? = null
+
+    private val PLAIN_THRESHOLD = 300_000
+
     companion object {
-        private const val TAG     = "CustomPatchActivity"
+        private const val TAG      = "CustomPatchActivity"
         private const val MAX_UNDO = 30
         private val PROTECTED_TAGS   = setOf("manifest", "application")
         private val COLOR_DELETE     = 0x40D32F2F.toInt()
@@ -69,29 +81,14 @@ class CustomPatchActivity : AppCompatActivity() {
     enum class Mode { DELETE, DEACTIVATE, NONE }
 
     data class XmlNode(
-        val index: Int,
-        val tagName: String,
-        val start: Int,
-        var end: Int,
-        var parent: XmlNode? = null,
-        val children: MutableList<XmlNode> = mutableListOf(),
+        val index: Int, val tagName: String, val start: Int, var end: Int,
+        var parent: XmlNode? = null, val children: MutableList<XmlNode> = mutableListOf(),
         var androidName: String? = null
     ) {
-        fun length(): Int = if (end > start) end - start else 0
-
-        // FIX HASHCODE : on utilise uniquement 'index' (unique par nœud).
-        // Sans ça, le hashCode() auto-généré par data class parcourt
-        // children → leurs enfants → leurs parents → récursion infinie → StackOverflow.
-        override fun hashCode(): Int = index
-
-        override fun equals(other: Any?): Boolean {
-            if (this === other) return true
-            if (other !is XmlNode) return false
-            return index == other.index
-        }
-
-        // toString() minimal pour éviter le même problème si un nœud est loggué
-        override fun toString(): String = "XmlNode(#$index <$tagName> $start..$end)"
+        fun length() = if (end > start) end - start else 0
+        override fun hashCode() = index
+        override fun equals(other: Any?) = other is XmlNode && index == other.index
+        override fun toString() = "XmlNode(#$index <$tagName> $start..$end)"
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -100,27 +97,23 @@ class CustomPatchActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // Laisse l'AppBarLayout (fitsSystemWindows=true) gérer le padding
-        // de la status bar. Nécessaire pour éviter le conflit toolbar/notifs.
         WindowCompat.setDecorFitsSystemWindows(window, false)
-
+        WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
         setContentView(R.layout.activity_custom_patch)
+        setupToolbar(); setupViews(); setupButtons(); setupTouchListener()
 
-        setupToolbar()
-        setupViews()
-        setupButtons()
-        setupTouchListener()
-
-        xmlContent = intent.getStringExtra("XML_CONTENT") ?: ""
+        xmlContent = XmlContentHolder.get() ?: intent.getStringExtra("XML_CONTENT") ?: ""
         if (xmlContent.isEmpty()) {
-            Toast.makeText(this, "No XML content received", Toast.LENGTH_LONG).show()
-            finish()
-            return
+            Toast.makeText(this, "No XML content received", Toast.LENGTH_LONG).show(); finish(); return
         }
+        startRender()
+    }
 
-        xmlTextView.text = "Parsing XML structure…"
-        Thread { parseAndRender() }.start()
+    override fun onDestroy() {
+        super.onDestroy()
+        viewportHandler.removeCallbacksAndMessages(null)
+        fadeHandler.removeCallbacksAndMessages(null)
+        loadingDialog?.dismiss(); loadingDialog = null
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -128,126 +121,235 @@ class CustomPatchActivity : AppCompatActivity() {
     // ════════════════════════════════════════════════════════════════════════
 
     private fun setupToolbar() {
-        val toolbar = findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
-        setSupportActionBar(toolbar)
+        val tb = findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
+        setSupportActionBar(tb)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setDisplayShowTitleEnabled(false)
     }
 
     private fun setupViews() {
-        xmlTextView       = findViewById(R.id.xmlTextView)
+        xmlTextView    = findViewById(R.id.xmlTextView)
         xmlTextView.highlightColor = android.graphics.Color.TRANSPARENT
-        btnDelete         = findViewById(R.id.btnModeDelete)
-        btnDeactivate     = findViewById(R.id.btnModeDeactivate)
-        xmlScrollView     = findViewById(R.id.xmlScrollView)
-        scrollbarThumb    = findViewById(R.id.scrollbarThumb)
-
-        // 56dp → px pour la hauteur minimale garantie
-        minThumbPx = (56 * resources.displayMetrics.density).toInt()
-
-        setupCustomScrollbar()
-        refreshButtonLabels()
+        btnDelete      = findViewById(R.id.btnModeDelete)
+        btnDeactivate  = findViewById(R.id.btnModeDeactivate)
+        xmlScrollView  = findViewById(R.id.xmlScrollView)
+        scrollbarThumb = findViewById(R.id.scrollbarThumb)
+        minThumbPx     = (56 * resources.displayMetrics.density).toInt()
+        setupCustomScrollbar(); refreshButtonLabels()
     }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // Rendu — PrecomputedTextCompat + viewport colorization
+    //
+    // Séquence pour les grands fichiers (> PLAIN_THRESHOLD) :
+    //   1. Dialog "Parsing…"              → affiché pendant le background
+    //   2. Background :
+    //      a. parseNodes(xmlContent)      → construit l'arbre pour les taps
+    //      b. PrecomputedTextCompat.create(plainText, params)  → layout sans spans
+    //   3. Main thread :
+    //      a. setPrecomputedText()        → INSTANTANÉ (layout déjà calculé)
+    //      b. isParsed = true             → taps activés
+    //      c. Dialog fermé
+    //      d. updateViewportSpans()       → colorise la zone visible
+    //   4. Background :
+    //      computeAllSpanInfos()          → calcul de couleurs en parallèle
+    //   5. MainThread (après spans prêts) : allSpanInfos = …; updateViewportSpans()
+    //   6. ScrollListener debounce 100ms  → updateViewportSpans()
+    // ════════════════════════════════════════════════════════════════════════
+
+    private fun startRender() {
+        // Dialog de chargement (pendant le parsing, nécessaire pour les taps)
+        loadingDialog = AlertDialog.Builder(this)
+            .setView(layoutInflater.inflate(R.layout.dialog_importing, null))
+            .setCancelable(false)
+            .create().also { it.show() }
+
+        val isLarge = xmlContent.length > PLAIN_THRESHOLD
+
+        // Params de mesure du TextView — DOIT être sur le main thread
+        val params = TextViewCompat.getTextMetricsParams(xmlTextView)
+
+        Thread {
+            try {
+                // a. Parse nodes (toujours depuis le texte brut)
+                parseNodes(xmlContent)
+                displayedText = xmlContent
+
+                // b. Pré-calcul du layout du texte brut
+                val plainSpannable = SpannableString(xmlContent)
+                val precomputed    = PrecomputedTextCompat.create(plainSpannable, params)
+
+                runOnUiThread {
+                    // setText INSTANTANÉ — main thread ne fait aucun calcul
+                    TextViewCompat.setPrecomputedText(xmlTextView, precomputed)
+                    isParsed = true
+                    loadingDialog?.dismiss(); loadingDialog = null
+                    xmlScrollView.post { updateViewportSpans() }
+                }
+
+                // c. Calcul des spans de couleur en parallèle (l'utilisateur peut déjà naviguer)
+                val spans = computeAllSpanInfos(xmlContent)
+                runOnUiThread {
+                    allSpanInfos = spans
+                    updateViewportSpans()
+                }
+
+            } catch (e: Exception) {
+                Log.e(TAG, "startRender error", e)
+                runOnUiThread {
+                    isParsed = true
+                    loadingDialog?.dismiss(); loadingDialog = null
+                    Toast.makeText(this, "Render failed: ${e.message}", Toast.LENGTH_LONG).show()
+                }
+            }
+        }.start()
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // Viewport colorization
+    // ════════════════════════════════════════════════════════════════════════
+
+    private fun computeAllSpanInfos(source: String): List<SpanInfo> {
+        val highlighted = XmlSyntaxHighlighter.highlight(source)
+        val computed    = SpannableString.valueOf(highlighted)
+        return computed.getSpans(0, computed.length, Any::class.java)
+            .map    { SpanInfo(it, computed.getSpanStart(it), computed.getSpanEnd(it), computed.getSpanFlags(it)) }
+            .filter { it.start >= 0 && it.end > it.start }
+            .sortedBy { it.start }
+    }
+
+    private fun updateViewportSpans() {
+        if (allSpanInfos.isEmpty()) return
+        val target = xmlTextView.text as? Spannable ?: return
+        val layout = xmlTextView.layout              ?: return
+
+        val scrollY    = xmlScrollView.scrollY
+        val visH       = xmlScrollView.height
+        val topLine    = layout.getLineForVertical(scrollY).coerceAtLeast(0)
+        val botLine    = layout.getLineForVertical(scrollY + visH).coerceAtMost(layout.lineCount - 1)
+        val charStart  = layout.getLineStart(topLine)
+        val charEnd    = layout.getLineEnd(botLine)
+        val buffStart  = (charStart - VIEWPORT_BUFFER).coerceAtLeast(0)
+        val buffEnd    = (charEnd   + VIEWPORT_BUFFER).coerceAtMost(target.length)
+        val evictStart = (charStart - VIEWPORT_EVICT).coerceAtLeast(0)
+        val evictEnd   = (charEnd   + VIEWPORT_EVICT).coerceAtMost(target.length)
+
+        // Supprime les spans trop loin
+        val toRemove = appliedHighlightSpans.keys.filter { i ->
+            val info = allSpanInfos[i]; info.end < evictStart || info.start > evictEnd
+        }
+        toRemove.forEach { i ->
+            try { target.removeSpan(appliedHighlightSpans[i]!!) } catch (_: Exception) {}
+            appliedHighlightSpans.remove(i)
+        }
+
+        // Binary search : premier span dans la zone buffered
+        var lo = 0; var hi = allSpanInfos.size - 1; var first = allSpanInfos.size
+        while (lo <= hi) {
+            val mid = (lo + hi) ushr 1
+            if (allSpanInfos[mid].start >= buffStart) { first = mid; hi = mid - 1 } else lo = mid + 1
+        }
+
+        val len = target.length
+        for (i in first until allSpanInfos.size) {
+            val info = allSpanInfos[i]
+            if (info.start > buffEnd) break
+            if (appliedHighlightSpans.containsKey(i) || info.end > len) continue
+            try { target.setSpan(info.span, info.start, info.end, info.flags); appliedHighlightSpans[i] = info.span }
+            catch (_: Exception) {}
+        }
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
+    // Scrollbar custom
+    // ════════════════════════════════════════════════════════════════════════
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupCustomScrollbar() {
+        var dragStartRawY = 0f; var dragStartScrollY = 0
 
-        // ── Mise à jour du thumb au scroll ───────────────────────────────────
         xmlScrollView.setOnScrollChangeListener(
             androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
-                updateThumbPosition(scrollY)
-                showThumb()
-                scheduleFade()
+                updateThumbPosition(scrollY); showThumb(); scheduleFade()
+                viewportRunnable?.let { viewportHandler.removeCallbacks(it) }
+                val r = Runnable { updateViewportSpans() }.also { viewportRunnable = it }
+                viewportHandler.postDelayed(r, 100)
             }
         )
 
-        // ── Couleur au toucher ────────────────────────────────────────────────
         scrollbarThumb.setOnTouchListener { v, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    // Violet au toucher
-                    (v.background as? android.graphics.drawable.GradientDrawable)
-                        ?.setColor(android.graphics.Color.parseColor("#6200EE"))
-                    // Annule le fade pendant qu'on tient le thumb
-                    fadeHandler.removeCallbacks(fadeRunnable)
-                    v.alpha = 1f
+                    dragStartRawY = event.rawY; dragStartScrollY = xmlScrollView.scrollY
+                    setThumbColor("#6200EE"); fadeHandler.removeCallbacks(fadeRunnable); v.alpha = 1f; true
                 }
-                MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL -> {
-                    // Retour gris
-                    (v.background as? android.graphics.drawable.GradientDrawable)
-                        ?.setColor(android.graphics.Color.parseColor("#66AAAAAA"))
-                    scheduleFade()
+                MotionEvent.ACTION_MOVE -> {
+                    val total  = xmlScrollView.getChildAt(0)?.height ?: return@setOnTouchListener true
+                    val vis    = xmlScrollView.height; val range = total - vis
+                    if (range <= 0) return@setOnTouchListener true
+                    val track  = (v.parent as? android.view.View)?.height?.minus(8) ?: return@setOnTouchListener true
+                    val tRange = track - v.height; if (tRange <= 0) return@setOnTouchListener true
+                    val delta  = ((event.rawY - dragStartRawY) / tRange * range).toInt()
+                    xmlScrollView.scrollTo(0, (dragStartScrollY + delta).coerceIn(0, range)); true
                 }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { setThumbColor("#66AAAAAA"); scheduleFade(); true }
+                else -> false
             }
-            // On ne consomme PAS l'événement ici car le drag du thumb
-            // n'est pas implémenté (scroll via swipe sur le contenu).
-            false
         }
 
-        // ── Position initiale une fois le layout mesuré ───────────────────────
-        xmlScrollView.post {
-            updateThumbPosition(xmlScrollView.scrollY)
-            // Caché par défaut, apparaît au premier scroll
-            scrollbarThumb.alpha = 0f
-            scrollbarThumb.visibility = android.view.View.VISIBLE
+        xmlScrollView.post { updateThumbPosition(0); scrollbarThumb.alpha = 0f; scrollbarThumb.visibility = android.view.View.VISIBLE }
+    }
+
+    private fun setThumbColor(hex: String) {
+        val dp6 = 6f * resources.displayMetrics.density
+        scrollbarThumb.background = android.graphics.drawable.GradientDrawable().apply {
+            shape = android.graphics.drawable.GradientDrawable.RECTANGLE; cornerRadius = dp6
+            setColor(android.graphics.Color.parseColor(hex))
         }
     }
 
     private fun updateThumbPosition(scrollY: Int) {
         val parent = scrollbarThumb.parent as? android.view.View ?: return
-
-        // Hauteur totale scrollable du contenu
-        val totalHeight   = xmlScrollView.getChildAt(0)?.height ?: return
-        val visibleHeight = xmlScrollView.height
-        if (totalHeight <= visibleHeight) {
-            // Pas besoin de scrollbar si tout le contenu est visible
-            scrollbarThumb.visibility = android.view.View.INVISIBLE
-            return
-        }
+        val total  = xmlScrollView.getChildAt(0)?.height ?: return
+        val vis    = xmlScrollView.height
+        if (total <= vis) { scrollbarThumb.visibility = android.view.View.INVISIBLE; return }
         scrollbarThumb.visibility = android.view.View.VISIBLE
-
-        // Zone disponible pour le thumb (hauteur du track - marges)
-        val trackHeight = parent.height - 8 // 4dp marge top + 4dp marge bottom
-
-        // Hauteur du thumb : proportionnelle, avec minimum garanti
-        val rawThumbHeight = (visibleHeight.toFloat() / totalHeight * trackHeight).toInt()
-        val thumbHeight    = rawThumbHeight.coerceAtLeast(minThumbPx)
-
-        // Position Y du thumb dans le track
-        val scrollRatio = scrollY.toFloat() / (totalHeight - visibleHeight)
-        val thumbTop    = (scrollRatio * (trackHeight - thumbHeight) + 4).toInt()
-            .coerceIn(4, trackHeight - thumbHeight + 4)
-
-        // Mise à jour layout si la hauteur change
-        if (scrollbarThumb.height != thumbHeight) {
-            val lp = scrollbarThumb.layoutParams
-            lp.height = thumbHeight
-            scrollbarThumb.layoutParams = lp
-        }
-
-        scrollbarThumb.translationY = thumbTop.toFloat()
+        val track  = parent.height - 8
+        val thumbH = (vis.toFloat() / total * track).toInt().coerceAtLeast(minThumbPx)
+        val ratio  = scrollY.toFloat() / (total - vis)
+        val top    = (ratio * (track - thumbH) + 4).toInt().coerceIn(4, track - thumbH + 4)
+        if (scrollbarThumb.height != thumbH) { val lp = scrollbarThumb.layoutParams; lp.height = thumbH; scrollbarThumb.layoutParams = lp }
+        scrollbarThumb.translationY = top.toFloat()
     }
 
-    private fun showThumb() {
-        scrollbarThumb.animate().cancel()
-        scrollbarThumb.alpha = 1f
-    }
+    private fun showThumb()    { scrollbarThumb.animate().cancel(); scrollbarThumb.alpha = 1f }
+    private fun scheduleFade() { fadeHandler.removeCallbacks(fadeRunnable); fadeHandler.postDelayed(fadeRunnable, 1500) }
 
-    private fun scheduleFade() {
-        fadeHandler.removeCallbacks(fadeRunnable)
-        fadeHandler.postDelayed(fadeRunnable, 1500)
-    }
+    // ════════════════════════════════════════════════════════════════════════
+    // Button labels / styles
+    // ════════════════════════════════════════════════════════════════════════
 
     private fun refreshButtonLabels() {
-        val deleteCount  = nodeStates.values.count { it == Mode.DELETE }
-        val disableCount = nodeStates.values.count { it == Mode.DEACTIVATE }
+        val dc = nodeStates.values.count { it == Mode.DELETE }
+        val ac = nodeStates.values.count { it == Mode.DEACTIVATE }
+        btnDelete.text     = if (dc > 0) "🔴  Delete  ·  $dc"     else "🔴  Delete"
+        btnDeactivate.text = if (ac > 0) "🟡  Deactivate  ·  $ac" else "🟡  Deactivate"
+    }
 
-        btnDelete.text = if (deleteCount > 0) "🔴  Delete  ·  $deleteCount"
-        else "🔴  Delete"
+    private fun setupButtons() {
+        updateButtonStyles()
+        btnDelete.setOnClickListener     { currentMode = if (currentMode == Mode.DELETE)     Mode.NONE else Mode.DELETE;     updateButtonStyles() }
+        btnDeactivate.setOnClickListener { currentMode = if (currentMode == Mode.DEACTIVATE) Mode.NONE else Mode.DEACTIVATE; updateButtonStyles() }
+    }
 
-        btnDeactivate.text = if (disableCount > 0) "🟡  Deactivate  ·  $disableCount"
-        else "🟡  Deactivate"
+    private fun updateButtonStyles() {
+        btnDelete.setBackgroundColor(Color.TRANSPARENT);     btnDelete.setTextColor("#D32F2F".toColorInt())
+        btnDeactivate.setBackgroundColor(Color.TRANSPARENT); btnDeactivate.setTextColor("#F9A825".toColorInt())
+        when (currentMode) {
+            Mode.DELETE     -> btnDelete.setBackgroundColor("#FFCDD2".toColorInt())
+            Mode.DEACTIVATE -> btnDeactivate.setBackgroundColor("#FFF9C4".toColorInt())
+            else -> {}
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -257,515 +359,231 @@ class CustomPatchActivity : AppCompatActivity() {
     private fun pushUndoState() {
         undoStack.addLast(nodeStates.toMap())
         if (undoStack.size > MAX_UNDO) undoStack.removeFirst()
-        redoStack.clear()
-        updateUndoRedoMenuItems()
+        redoStack.clear(); updateUndoRedoMenuItems()
     }
+    private fun undo() { if (undoStack.isEmpty()) return; redoStack.addLast(nodeStates.toMap()); restoreState(undoStack.removeLast()); updateUndoRedoMenuItems(); Toast.makeText(this, "Undo", Toast.LENGTH_SHORT).show() }
+    private fun redo() { if (redoStack.isEmpty()) return; undoStack.addLast(nodeStates.toMap()); restoreState(redoStack.removeLast()); updateUndoRedoMenuItems(); Toast.makeText(this, "Redo", Toast.LENGTH_SHORT).show() }
 
-    private fun undo() {
-        if (undoStack.isEmpty()) return
-        redoStack.addLast(nodeStates.toMap())
-        restoreState(undoStack.removeLast())
-        updateUndoRedoMenuItems()
-        Toast.makeText(this, "Undo", Toast.LENGTH_SHORT).show()
+    private fun restoreState(snap: Map<Int, Mode>) {
+        val changed = (nodeStates.keys + snap.keys).toSet()
+            .filter { nodeStates[it] != snap[it] }
+            .mapNotNull { k -> allNodes.find { it.index == k } }.toSet()
+        nodeStates.clear(); nodeStates.putAll(snap); updateVisuals(changed); refreshButtonLabels()
     }
-
-    private fun redo() {
-        if (redoStack.isEmpty()) return
-        undoStack.addLast(nodeStates.toMap())
-        restoreState(redoStack.removeLast())
-        updateUndoRedoMenuItems()
-        Toast.makeText(this, "Redo", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun restoreState(snapshot: Map<Int, Mode>) {
-        val allKeys = (nodeStates.keys + snapshot.keys).toSet()
-        val changedNodes = allKeys
-            .filter { nodeStates[it] != snapshot[it] }
-            .mapNotNull { key -> allNodes.find { it.index == key } }
-            .toSet()
-        nodeStates.clear()
-        nodeStates.putAll(snapshot)
-        updateVisuals(changedNodes)
-        refreshButtonLabels()
-    }
-
-    private fun updateUndoRedoMenuItems() {
-        undoMenuItem?.isEnabled = undoStack.isNotEmpty()
-        redoMenuItem?.isEnabled = redoStack.isNotEmpty()
-    }
+    private fun updateUndoRedoMenuItems() { undoMenuItem?.isEnabled = undoStack.isNotEmpty(); redoMenuItem?.isEnabled = redoStack.isNotEmpty() }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Reset all
+    // Reset / Bulk select
     // ════════════════════════════════════════════════════════════════════════
 
     private fun resetAll() {
-        if (nodeStates.isEmpty()) {
-            Toast.makeText(this, "Nothing to reset", Toast.LENGTH_SHORT).show()
-            return
-        }
-        AlertDialog.Builder(this)
-            .setTitle("Reset selection")
-            .setMessage("Clear all selected elements?")
+        if (nodeStates.isEmpty()) { Toast.makeText(this, "Nothing to reset", Toast.LENGTH_SHORT).show(); return }
+        AlertDialog.Builder(this).setTitle("Reset selection").setMessage("Clear all selected elements?")
             .setPositiveButton("Reset") { _, _ ->
                 pushUndoState()
-                val changed = nodeStates.keys
-                    .mapNotNull { key -> allNodes.find { it.index == key } }.toSet()
-                nodeStates.clear()
-                updateVisuals(changed)
-                refreshButtonLabels()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+                val changed = nodeStates.keys.mapNotNull { k -> allNodes.find { it.index == k } }.toSet()
+                nodeStates.clear(); updateVisuals(changed); refreshButtonLabels()
+            }.setNegativeButton("Cancel", null).show()
     }
-
-    // ════════════════════════════════════════════════════════════════════════
-    // Long press → Bulk select (même type de tag)
-    // ════════════════════════════════════════════════════════════════════════
 
     private fun showSelectAllDialog(tagName: String) {
-        if (currentMode == Mode.NONE) {
-            Toast.makeText(this, "Select a mode first (🔴 or 🟡)", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val sameTagNodes = allNodes.filter {
-            it.tagName.equals(tagName, ignoreCase = true) &&
-                    !PROTECTED_TAGS.contains(it.tagName.lowercase())
-        }
-        if (sameTagNodes.isEmpty()) return
-
-        val allAlreadySet = sameTagNodes.all { nodeStates[it.index] == currentMode }
-        val modeLabel     = if (currentMode == Mode.DELETE) "delete" else "deactivate"
-
-        AlertDialog.Builder(this)
-            .setTitle("Bulk select: <$tagName>")
-            .setMessage(
-                if (allAlreadySet) "Deselect all ${sameTagNodes.size} <$tagName>?"
-                else "Apply '$modeLabel' to all ${sameTagNodes.size} <$tagName>?"
-            )
-            .setPositiveButton(if (allAlreadySet) "Deselect all" else "Select all") { _, _ ->
+        if (currentMode == Mode.NONE) { Toast.makeText(this, "Select a mode first (🔴 or 🟡)", Toast.LENGTH_SHORT).show(); return }
+        val same = allNodes.filter { it.tagName.equals(tagName, ignoreCase = true) && !PROTECTED_TAGS.contains(it.tagName.lowercase()) }
+        if (same.isEmpty()) return
+        val allSet    = same.all { nodeStates[it.index] == currentMode }
+        val modeLabel = if (currentMode == Mode.DELETE) "delete" else "deactivate"
+        AlertDialog.Builder(this).setTitle("Bulk select: <$tagName>")
+            .setMessage(if (allSet) "Deselect all ${same.size} <$tagName>?" else "Apply '$modeLabel' to all ${same.size} <$tagName>?")
+            .setPositiveButton(if (allSet) "Deselect all" else "Select all") { _, _ ->
                 pushUndoState()
-                val changedNodes = mutableSetOf<XmlNode>()
-                val newMode: Mode? = if (allAlreadySet) null else currentMode
-                for (node in sameTagNodes) applyModeToNodeAndChildren(node, newMode, changedNodes)
-                updateVisuals(changedNodes)
-                refreshButtonLabels()
-                val action = when (newMode) {
-                    Mode.DELETE     -> "Marked for deletion"
-                    Mode.DEACTIVATE -> "Marked for deactivation"
-                    else            -> "Deselected"
-                }
-                Toast.makeText(this, "$action: ${sameTagNodes.size} <$tagName>", Toast.LENGTH_SHORT).show()
-            }
-            .setNegativeButton("Cancel", null)
-            .show()
+                val changed = mutableSetOf<XmlNode>(); val mode: Mode? = if (allSet) null else currentMode
+                same.forEach { applyModeToNodeAndChildren(it, mode, changed) }
+                updateVisuals(changed); refreshButtonLabels()
+                Toast.makeText(this, "${when(mode){Mode.DELETE->"Marked for deletion";Mode.DEACTIVATE->"Marked for deactivation";else->"Deselected"}}: ${same.size} <$tagName>", Toast.LENGTH_SHORT).show()
+            }.setNegativeButton("Cancel", null).show()
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Touch system
-    //
-    // FIX LONG PRESS :
-    // Le ScrollView parent intercepte ACTION_MOVE, annulant le timer long press
-    // avant 500ms. Fix : on bloque l'interception sur ACTION_DOWN, et on la
-    // relâche dès qu'un scroll est détecté (onScroll callback).
-    //
-    // FIX CRASH SUR TAP :
-    // - Tout le code dans handleTap est wrappé dans try/catch
-    // - On vérifie layout != null avant chaque accès
-    // - On vérifie que isParsed == true avant de traiter le tap
-    // - Toutes les opérations sur Spannable sont sécurisées (coerceIn)
+    // Touch listener
     // ════════════════════════════════════════════════════════════════════════
 
     @SuppressLint("ClickableViewAccessibility")
     private fun setupTouchListener() {
         var isScrolling = false
-
-        val gestureDetector = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
-
-            // Doit retourner true pour que les gestes suivants soient reçus
-            override fun onDown(e: MotionEvent): Boolean {
-                isScrolling = false
-                return true
-            }
-
+        val gd = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+            override fun onDown(e: MotionEvent): Boolean { isScrolling = false; return true }
             override fun onSingleTapUp(e: MotionEvent): Boolean {
-                if (!isScrolling) {
-                    try { handleTap(e, longPress = false) }
-                    catch (ex: Exception) { Log.e(TAG, "Tap error", ex) }
-                }
+                if (!isScrolling) try { handleTap(e, false) } catch (ex: Exception) { Log.e(TAG, "tap", ex) }
                 return true
             }
-
             override fun onLongPress(e: MotionEvent) {
-                if (!isScrolling) {
-                    // runOnUiThread car onLongPress est parfois appelé
-                    // depuis un handler interne du GestureDetector
-                    runOnUiThread {
-                        try { handleTap(e, longPress = true) }
-                        catch (ex: Exception) { Log.e(TAG, "Long press error", ex) }
-                    }
-                }
+                if (!isScrolling) runOnUiThread { try { handleTap(e, true) } catch (ex: Exception) { Log.e(TAG, "lp", ex) } }
             }
-
-            override fun onScroll(
-                e1: MotionEvent?,
-                e2: MotionEvent,
-                distanceX: Float,
-                distanceY: Float
-            ): Boolean {
-                // L'utilisateur scrolle → relâche le verrou d'interception
-                isScrolling = true
-                xmlTextView.parent?.requestDisallowInterceptTouchEvent(false)
-                return false
+            override fun onScroll(e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float): Boolean {
+                isScrolling = true; xmlTextView.parent?.requestDisallowInterceptTouchEvent(false); return false
             }
         })
-
         xmlTextView.setOnTouchListener { v, event ->
             when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    // Bloque l'interception parent pendant la détection du long press
-                    v.parent?.requestDisallowInterceptTouchEvent(true)
-                }
+                MotionEvent.ACTION_DOWN         -> v.parent?.requestDisallowInterceptTouchEvent(true)
                 MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL -> {
-                    // Relâche dans tous les cas pour ne pas bloquer le scroll ultérieur
-                    v.parent?.requestDisallowInterceptTouchEvent(false)
-                }
+                MotionEvent.ACTION_CANCEL       -> v.parent?.requestDisallowInterceptTouchEvent(false)
             }
-            gestureDetector.onTouchEvent(event)
-            // true = on consomme l'événement (évite la sélection de texte native)
-            true
+            gd.onTouchEvent(event); true
         }
     }
 
     private fun handleTap(event: MotionEvent, longPress: Boolean) {
         if (!isParsed) return
         if (currentMode == Mode.NONE && !longPress) return
-
-        // ── 1. Calcul de l'offset dans le texte ─────────────────────────────
-        val layout = xmlTextView.layout ?: return  // pas encore mesuré
-
+        val layout = xmlTextView.layout ?: return
         val x = event.x.toInt() - xmlTextView.totalPaddingLeft
         val y = event.y.toInt() - xmlTextView.totalPaddingTop
-
         if (layout.lineCount == 0) return
-
-        // Clamp y pour éviter les out-of-bounds au bord du TextView
-        val maxY    = layout.getLineBottom(layout.lineCount - 1)
-        val clampedY = y.coerceIn(0, maxY)
-
-        val line = layout.getLineForVertical(clampedY)
+        val clampedY = y.coerceIn(0, layout.getLineBottom(layout.lineCount - 1))
+        val line     = layout.getLineForVertical(clampedY)
         if (line < 0 || line >= layout.lineCount) return
-
         val offset = layout.getOffsetForHorizontal(line, x.toFloat())
-
-        // Ignore si le tap est à droite de la dernière ligne (zone vide)
         if (x > 0 && x > layout.getLineWidth(line)) return
-
-        // ── 2. Trouver le nœud cible ─────────────────────────────────────────
-        // On filtre les nœuds dont les bornes encadrent l'offset
-        val candidates = allNodes.filter { node ->
-            node.start >= 0 && node.end > node.start &&
-                    offset >= node.start && offset <= node.end
-        }
+        val candidates = allNodes.filter { it.start >= 0 && it.end > it.start && offset >= it.start && offset <= it.end }
         if (candidates.isEmpty()) return
-
-        // Le plus précis = le plus petit (l'enfant le plus profond)
-        val targetNode = candidates.minByOrNull { it.length() } ?: return
-
-        // Protection des racines
-        if (PROTECTED_TAGS.contains(targetNode.tagName.lowercase())) return
-
-        // ── 3. Action ────────────────────────────────────────────────────────
-        if (longPress) {
-            showSelectAllDialog(targetNode.tagName)
-        } else {
-            pushUndoState()
-            onNodeClicked(targetNode)
-            refreshButtonLabels()
-        }
+        val target = candidates.minByOrNull { it.length() } ?: return
+        if (PROTECTED_TAGS.contains(target.tagName.lowercase())) return
+        if (longPress) showSelectAllDialog(target.tagName)
+        else { pushUndoState(); onNodeClicked(target); refreshButtonLabels() }
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // XML Parsing — FIX HASHCODE
-    //
-    // On parse dans highlighted.toString() (texte exact du TextView),
-    // pas dans xmlContent. Garanti que les positions des nœuds correspondent
-    // au texte affiché, même si le highlighter transforme des caractères.
+    // XML Parsing
     // ════════════════════════════════════════════════════════════════════════
-
-    private fun parseAndRender() {
-        try {
-            // 1. Coloration syntaxique
-            val highlighted = XmlSyntaxHighlighter.highlight(xmlContent)
-
-            // 2. FIX CRITIQUE : parser depuis le texte affiché
-            displayedText = highlighted.toString()
-            parseNodes(displayedText)
-
-            isParsed = true
-
-            runOnUiThread {
-                xmlTextView.setText(highlighted, TextView.BufferType.SPANNABLE)
-            }
-
-        } catch (e: Exception) {
-            Log.e(TAG, "Parse error", e)
-            runOnUiThread {
-                xmlTextView.text = "Parse error: ${e.message}"
-                Toast.makeText(this, "Failed to parse XML", Toast.LENGTH_LONG).show()
-            }
-        }
-    }
 
     private fun parseNodes(source: String) {
         allNodes.clear()
-
-        val tagPattern  = Pattern.compile(
-            "<(/)?([a-zA-Z0-9_\\-:]+)((?:\\s[^>]*?)?)(/)?>",
-            Pattern.DOTALL
-        )
-        val namePattern = Pattern.compile("android:name\\s*=\\s*\"([^\"]+)\"")
-        val matcher     = tagPattern.matcher(source)
-        val stack       = Stack<XmlNode>()
-        var nodeCounter = 0
+        val tagPat  = Pattern.compile("<(/)?([a-zA-Z0-9_\\-:]+)((?:\\s[^>]*?)?)(/)?>", Pattern.DOTALL)
+        val namePat = Pattern.compile("android:name\\s*=\\s*\"([^\"]+)\"")
+        val matcher = tagPat.matcher(source)
+        val stack   = Stack<XmlNode>(); var counter = 0
 
         while (matcher.find()) {
-            val isClosingTag  = matcher.group(1) == "/"
-            val tagName       = matcher.group(2) ?: continue
-            val attributes    = matcher.group(3) ?: ""
-            val isSelfClosing = matcher.group(4) == "/"
-            val startPos      = matcher.start()
-            val endPos        = matcher.end()
+            val isClose = matcher.group(1) == "/"
+            val tag     = matcher.group(2) ?: continue
+            val attrs   = matcher.group(3) ?: ""
+            val isSelf  = matcher.group(4) == "/"
+            val nm      = namePat.matcher(attrs)
+            val aName   = if (nm.find()) nm.group(1) else null
 
-            val nameMatcher = namePattern.matcher(attributes)
-            val androidName = if (nameMatcher.find()) nameMatcher.group(1) else null
-
-            if (isClosingTag) {
-                // Recherche dans la pile pour tolérer le XML légèrement malformé
-                val stackIdx = (0 until stack.size).lastOrNull { stack[it].tagName == tagName }
-                if (stackIdx != null) {
-                    while (stack.size > stackIdx + 1) stack.pop()
-                    stack.pop().end = endPos
-                }
+            if (isClose) {
+                val idx = (0 until stack.size).lastOrNull { stack[it].tagName == tag }
+                if (idx != null) { while (stack.size > idx + 1) stack.pop(); stack.pop().end = matcher.end() }
             } else {
-                val newNode = XmlNode(
-                    index       = nodeCounter++,
-                    tagName     = tagName,
-                    start       = startPos,
-                    end         = endPos,
-                    parent      = null,
-                    children    = mutableListOf(),
-                    androidName = androidName
-                )
-                if (stack.isNotEmpty()) {
-                    val parent = stack.peek()
-                    newNode.parent = parent
-                    parent.children.add(newNode)
-                }
-                allNodes.add(newNode)
-                if (!isSelfClosing) stack.push(newNode)
+                val node = XmlNode(counter++, tag, matcher.start(), matcher.end(), null, mutableListOf(), aName)
+                if (stack.isNotEmpty()) { val p = stack.peek(); node.parent = p; p.children.add(node) }
+                allNodes.add(node); if (!isSelf) stack.push(node)
             }
         }
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Node click logic
+    // Node visuals
     // ════════════════════════════════════════════════════════════════════════
 
     private fun onNodeClicked(node: XmlNode) {
-        val newMode = if (nodeStates[node.index] == currentMode) null else currentMode
-        val changedNodes = mutableSetOf<XmlNode>()
-        applyModeToNodeAndChildren(node, newMode, changedNodes)
-        updateParentState(node.parent, changedNodes)
-        updateVisuals(changedNodes)
+        val mode = if (nodeStates[node.index] == currentMode) null else currentMode
+        val changed = mutableSetOf<XmlNode>()
+        applyModeToNodeAndChildren(node, mode, changed); updateParentState(node.parent, changed); updateVisuals(changed)
     }
 
-    private fun applyModeToNodeAndChildren(node: XmlNode, mode: Mode?, changedSet: MutableSet<XmlNode>) {
-        val oldMode = nodeStates[node.index]
-        if (oldMode != mode) {
-            if (mode == null) nodeStates.remove(node.index) else nodeStates[node.index] = mode
-            changedSet.add(node)
+    private fun applyModeToNodeAndChildren(node: XmlNode, mode: Mode?, s: MutableSet<XmlNode>) {
+        if (nodeStates[node.index] != mode) {
+            if (mode == null) nodeStates.remove(node.index) else nodeStates[node.index] = mode; s.add(node)
         }
-        for (child in node.children) applyModeToNodeAndChildren(child, mode, changedSet)
+        node.children.forEach { applyModeToNodeAndChildren(it, mode, s) }
     }
 
-    private fun updateParentState(parent: XmlNode?, changedSet: MutableSet<XmlNode>) {
+    private fun updateParentState(parent: XmlNode?, changed: MutableSet<XmlNode>) {
         if (parent == null || parent.children.isEmpty()) return
-        val firstChildState = nodeStates[parent.children[0].index]
-        val allSame         = parent.children.all { nodeStates[it.index] == firstChildState }
-        val newParentState  = if (allSame && firstChildState != null) firstChildState else null
-        val oldParentState  = nodeStates[parent.index]
-        if (oldParentState != newParentState) {
-            if (newParentState == null) nodeStates.remove(parent.index)
-            else nodeStates[parent.index] = newParentState
-            changedSet.add(parent)
-            updateParentState(parent.parent, changedSet)
+        val first = nodeStates[parent.children[0].index]
+        val same  = parent.children.all { nodeStates[it.index] == first }
+        val new   = if (same && first != null) first else null
+        if (nodeStates[parent.index] != new) {
+            if (new == null) nodeStates.remove(parent.index) else nodeStates[parent.index] = new
+            changed.add(parent); updateParentState(parent.parent, changed)
         }
     }
 
-    // ════════════════════════════════════════════════════════════════════════
-    // Visual update — FIX CRASH
-    //
-    // - Tout est dans un try/catch global
-    // - coerceIn sur start/end pour éviter StringIndexOutOfBoundsException
-    // - Vérification start < end avant setSpan
-    // - Accès au Spannable uniquement sur le main thread
-    // ════════════════════════════════════════════════════════════════════════
-
-    private fun updateVisuals(nodesToUpdate: Set<XmlNode>) {
+    private fun updateVisuals(nodes: Set<XmlNode>) {
         try {
-            val spannable = xmlTextView.text as? Spannable ?: return
-            val len = spannable.length
-
-            for (node in nodesToUpdate) {
-                // Supprime l'ancien span via référence directe → O(1)
-                activeSpans.remove(node.index)?.let {
-                    try { spannable.removeSpan(it) } catch (_: Exception) {}
-                }
-
+            val sp = xmlTextView.text as? Spannable ?: return; val len = sp.length
+            for (node in nodes) {
+                activeSpans.remove(node.index)?.let { try { sp.removeSpan(it) } catch (_: Exception) {} }
                 val mode = nodeStates[node.index] ?: continue
-
-                // Bornes sécurisées — évite StringIndexOutOfBoundsException
-                val safeStart = node.start.coerceIn(0, len)
-                val safeEnd   = node.end.coerceIn(safeStart, len)
-                if (safeStart >= safeEnd) continue
-
-                val color   = if (mode == Mode.DELETE) COLOR_DELETE else COLOR_DEACTIVATE
-                val newSpan = BackgroundColorSpan(color)
-
-                try {
-                    spannable.setSpan(newSpan, safeStart, safeEnd, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                    activeSpans[node.index] = newSpan
-                } catch (ex: Exception) {
-                    Log.e(TAG, "setSpan failed for node ${node.index}: $safeStart..$safeEnd / len=$len", ex)
-                }
+                val s = node.start.coerceIn(0, len); val e = node.end.coerceIn(s, len)
+                if (s >= e) continue
+                val span = BackgroundColorSpan(if (mode == Mode.DELETE) COLOR_DELETE else COLOR_DEACTIVATE)
+                try { sp.setSpan(span, s, e, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE); activeSpans[node.index] = span }
+                catch (ex: Exception) { Log.e(TAG, "setSpan $s..$e len=$len", ex) }
             }
-        } catch (ex: Exception) {
-            Log.e(TAG, "updateVisuals error", ex)
-        }
+        } catch (ex: Exception) { Log.e(TAG, "updateVisuals", ex) }
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Summary avec hiérarchie
+    // Summary / Apply
     // ════════════════════════════════════════════════════════════════════════
 
     private fun computeOccurrenceMap(): Map<Int, Int> {
-        val tagCounters = mutableMapOf<String, Int>()
-        val result      = mutableMapOf<Int, Int>()
-        allNodes.sortedBy { it.index }.forEach { node ->
-            val tag          = node.tagName
-            val currentIndex = tagCounters.getOrDefault(tag, 0)
-            result[node.index] = currentIndex
-            tagCounters[tag]   = currentIndex + 1
-        }
-        return result
+        val c = mutableMapOf<String, Int>(); val r = mutableMapOf<Int, Int>()
+        allNodes.sortedBy { it.index }.forEach { node -> val i = c.getOrDefault(node.tagName, 0); r[node.index] = i; c[node.tagName] = i + 1 }
+        return r
     }
 
     private fun visibleDepth(node: XmlNode): Int {
-        var depth = 0
-        var current = node.parent
-        while (current != null) {
-            if (!PROTECTED_TAGS.contains(current.tagName.lowercase())) depth++
-            current = current.parent
-        }
-        return depth
+        var d = 0; var c = node.parent
+        while (c != null) { if (!PROTECTED_TAGS.contains(c.tagName.lowercase())) d++; c = c.parent }
+        return d
     }
 
-    private fun buildHierarchicalSummary(nodes: List<XmlNode>, occurrenceMap: Map<Int, Int>): String {
+    private fun buildHierarchicalSummary(nodes: List<XmlNode>, om: Map<Int, Int>): String {
         val sb = StringBuilder()
-        for (node in nodes.sortedBy { it.start }) {
-            val depth  = visibleDepth(node)
-            val indent = "    ".repeat(depth)
-            val prefix = if (depth > 0) "└─ " else ""
-            val name   = node.androidName?.substringAfterLast('.') ?: ""
-            val idx    = occurrenceMap[node.index] ?: 0
-
-            sb.append("$indent$prefix<${node.tagName}>")
-            if (name.isNotEmpty()) sb.append("  $name")
-            sb.append("  [#$idx]\n")
+        nodes.sortedBy { it.start }.forEach { n ->
+            val d = visibleDepth(n)
+            sb.append("${"    ".repeat(d)}${if (d > 0) "└─ " else ""}<${n.tagName}>")
+            n.androidName?.substringAfterLast('.')?.let { if (it.isNotEmpty()) sb.append("  $it") }
+            sb.append("  [#${om[n.index] ?: 0}]\n")
         }
         return sb.toString()
     }
 
     private fun showSummaryDialog() {
-        if (nodeStates.isEmpty()) {
-            Toast.makeText(this, "No elements selected", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val occurrenceMap = computeOccurrenceMap()
-        val toDelete  = allNodes.filter { nodeStates[it.index] == Mode.DELETE }.sortedBy { it.start }
-        val toDisable = allNodes.filter { nodeStates[it.index] == Mode.DEACTIVATE }.sortedBy { it.start }
-        val sb = StringBuilder()
-
-        if (toDelete.isNotEmpty()) {
-            sb.appendLine("🔴  TO DELETE  (${toDelete.size})")
-            sb.appendLine("─────────────────────────")
-            sb.append(buildHierarchicalSummary(toDelete, occurrenceMap))
-        }
-        if (toDisable.isNotEmpty()) {
-            if (sb.isNotEmpty()) sb.appendLine()
-            sb.appendLine("🟡  TO DISABLE  (${toDisable.size})")
-            sb.appendLine("─────────────────────────")
-            sb.append(buildHierarchicalSummary(toDisable, occurrenceMap))
-        }
-
-        AlertDialog.Builder(this)
-            .setTitle("Patch Summary")
-            .setMessage(sb.toString())
+        if (nodeStates.isEmpty()) { Toast.makeText(this, "No elements selected", Toast.LENGTH_SHORT).show(); return }
+        val om  = computeOccurrenceMap()
+        val del = allNodes.filter { nodeStates[it.index] == Mode.DELETE }.sortedBy { it.start }
+        val dis = allNodes.filter { nodeStates[it.index] == Mode.DEACTIVATE }.sortedBy { it.start }
+        val sb  = StringBuilder()
+        if (del.isNotEmpty()) { sb.appendLine("🔴  TO DELETE  (${del.size})"); sb.appendLine("─────────────────────────"); sb.append(buildHierarchicalSummary(del, om)) }
+        if (dis.isNotEmpty()) { if (sb.isNotEmpty()) sb.appendLine(); sb.appendLine("🟡  TO DISABLE  (${dis.size})"); sb.appendLine("─────────────────────────"); sb.append(buildHierarchicalSummary(dis, om)) }
+        AlertDialog.Builder(this).setTitle("Patch Summary").setMessage(sb.toString())
             .setPositiveButton("Apply now") { _, _ -> applyPatch() }
-            .setNegativeButton("Keep editing", null)
-            .show()
+            .setNegativeButton("Keep editing", null).show()
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Buttons & Menu
+    // Menu
     // ════════════════════════════════════════════════════════════════════════
-
-    private fun setupButtons() {
-        updateButtonStyles()
-        btnDelete.setOnClickListener {
-            currentMode = if (currentMode == Mode.DELETE) Mode.NONE else Mode.DELETE
-            updateButtonStyles()
-        }
-        btnDeactivate.setOnClickListener {
-            currentMode = if (currentMode == Mode.DEACTIVATE) Mode.NONE else Mode.DEACTIVATE
-            updateButtonStyles()
-        }
-    }
-
-    private fun updateButtonStyles() {
-        // Reset styles
-        btnDelete.setBackgroundColor(Color.TRANSPARENT)
-        btnDelete.setTextColor("#D32F2F".toColorInt())
-        btnDeactivate.setBackgroundColor(Color.TRANSPARENT)
-        btnDeactivate.setTextColor("#F9A825".toColorInt())
-
-        // Actif = fond coloré
-        when (currentMode) {
-            Mode.DELETE     -> btnDelete.setBackgroundColor("#FFCDD2".toColorInt())
-            Mode.DEACTIVATE -> btnDeactivate.setBackgroundColor("#FFF9C4".toColorInt())
-            else            -> {}
-        }
-    }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menuInflater.inflate(R.menu.menu_custom_patch, menu)
         undoMenuItem = menu?.findItem(R.id.action_undo)
         redoMenuItem = menu?.findItem(R.id.action_redo)
-        updateUndoRedoMenuItems()
-        return true
+        updateUndoRedoMenuItems(); return true
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        return when (item.itemId) {
-            android.R.id.home   -> { finish(); true }
-            R.id.action_undo    -> { undo(); true }
-            R.id.action_redo    -> { redo(); true }
-            R.id.action_reset   -> { resetAll(); true }
-            R.id.action_summary -> { showSummaryDialog(); true }
-            R.id.action_apply   -> { showSummaryDialog(); true }
-            else                -> super.onOptionsItemSelected(item)
-        }
+    override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
+        android.R.id.home                      -> { finish(); true }
+        R.id.action_undo                       -> { undo(); true }
+        R.id.action_redo                       -> { redo(); true }
+        R.id.action_reset                      -> { resetAll(); true }
+        R.id.action_summary, R.id.action_apply -> { showSummaryDialog(); true }
+        else                                   -> super.onOptionsItemSelected(item)
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -773,32 +591,18 @@ class CustomPatchActivity : AppCompatActivity() {
     // ════════════════════════════════════════════════════════════════════════
 
     private fun applyPatch() {
-        if (nodeStates.isEmpty()) {
-            Toast.makeText(this, "No elements selected", Toast.LENGTH_SHORT).show()
-            return
-        }
-        val targets     = mutableListOf<PatchTarget>()
-        val tagCounters = mutableMapOf<String, Int>()
-
+        if (nodeStates.isEmpty()) { Toast.makeText(this, "No elements selected", Toast.LENGTH_SHORT).show(); return }
+        val targets = mutableListOf<PatchTarget>(); val counters = mutableMapOf<String, Int>()
         allNodes.sortedBy { it.index }.forEach { node ->
-            val tagName      = node.tagName
-            val currentIndex = tagCounters.getOrDefault(tagName, 0)
-            if (nodeStates.containsKey(node.index)) {
-                val actionType = if (nodeStates[node.index] == Mode.DELETE) ActionType.DELETE else ActionType.DISABLE
-                targets.add(PatchTarget(
-                    type            = actionType,
-                    tagName         = tagName,
-                    androidName     = node.androidName,
-                    parentName      = node.parent?.tagName,
-                    occurrenceIndex = currentIndex
-                ))
-            }
-            tagCounters[tagName] = currentIndex + 1
+            val idx = counters.getOrDefault(node.tagName, 0)
+            if (nodeStates.containsKey(node.index)) targets.add(PatchTarget(
+                type = if (nodeStates[node.index] == Mode.DELETE) ActionType.DELETE else ActionType.DISABLE,
+                tagName = node.tagName, androidName = node.androidName,
+                parentName = node.parent?.tagName, occurrenceIndex = idx
+            ))
+            counters[node.tagName] = idx + 1
         }
-
-        val intent = Intent()
-        intent.putExtra("PATCH_DATA", CustomPatchData(targets))
-        setResult(Activity.RESULT_OK, intent)
+        setResult(Activity.RESULT_OK, Intent().also { it.putExtra("PATCH_DATA", CustomPatchData(targets)) })
         finish()
     }
 }
