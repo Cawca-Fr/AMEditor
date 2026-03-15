@@ -871,7 +871,7 @@ class MainActivity : AppCompatActivity() {
             .setTitle(getString(R.string.dialog_contact_title))
             .setMessage(getString(R.string.contact_telegram))
             .setPositiveButton(getString(R.string.btn_open_telegram)) { _, _ ->
-                val intent = Intent(Intent.ACTION_VIEW, Uri.parse("https://t.me/manifestpatcher"))
+                val intent = Intent(Intent.ACTION_VIEW, "https://t.me/manifestpatcher".toUri())
                 runCatching { startActivity(intent) }
             }
             .setNegativeButton(getString(R.string.btn_close), null)
