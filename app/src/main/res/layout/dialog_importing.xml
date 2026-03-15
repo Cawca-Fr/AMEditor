@@ -28,7 +28,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="18dp"
-        android:text="Importing APK"
+        android:text="@string/dialog_import_title"
         android:textSize="16sp"
         android:textStyle="bold"
         android:textColor="#212121" />
@@ -39,7 +39,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="6dp"
-        android:text="Reading AndroidManifest…"
+        android:text="@string/dialog_import_subtitle"
         android:textSize="13sp"
         android:textColor="#757575"
         android:gravity="center" />
@@ -49,7 +49,7 @@
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_marginTop="14dp"
-        android:text="You can continue using the app"
+        android:text="@string/dialog_import_note"
         android:textSize="11sp"
         android:textColor="#BDBDBD"
         android:gravity="center" />

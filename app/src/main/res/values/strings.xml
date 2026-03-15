@@ -3,7 +3,7 @@
     <string name="selected_apk_message">Selected APK: %1$s</string>
     <string name="processing_started">Starting Patch…\nPlease wait during processing.</string>
     <string name="select_apk_first">Please select an APK file first.</string>
-    <string name="process_apk_button_text" translatable="false">Process APK</string>
+    <string name="process_apk_button_text" translatable="false">Patch APK</string>
     <string name="select_apk_button_text" translatable="false">Select APK</string>
 
     <!-- Permissions -->
@@ -33,6 +33,7 @@
     <string name="error_saving_temp_file_missing">Temporary file to save not found.</string>
     <string name="apk_saved_successfully_at">Modified APK saved successfully at: %1$s</string>
     <string name="apk_saved_successfully">Modified APK saved!</string>
+    <string name="error_reading_manifest">Error reading manifest: %1$s</string>
     <string name="error_saving_apk">Error while saving the APK: %1$s</string>
     <string name="error_saving_apk_short">Save error</string>
     <string name="error_copying_apk" translatable="false">An error occured while copying the apk file</string>
@@ -41,16 +42,178 @@
     <!-- Logs MainActivity -->
     <string name="log_header">--- Logs ---\n</string>
     <string name="log_starting_patch">Starting processing of %1$s…\n</string>
-    <string name="log_apk_selected">APK selected: %1$s\n</string>
-    <string name="log_apk_saved_success">APK saved successfully!\n</string>
-    <string name="log_error_saving_apk">Error during save: %1$s\n</string>
+    <string name="log_apk_selected">APK selected: %1$s</string>
+    <string name="log_apk_saved_success">APK saved successfully!</string>
+    <string name="log_error_saving_apk">❌ Save error: %1$s</string>
     <string name="log_save_cancelled">Save cancelled by user.\n</string>
     <string name="log_no_file_selected">No file selected\n</string>
     <string name="log_success_total">TOTAL SUCCESS!\n</string>
-    <string name="log_failure">FAILURE: %1$s\n</string>
-    <string name="log_crash">Crash: %1$s\n</string>
+    <string name="log_failure">❌ FAILURE: %1$s</string>
+    <string name="log_crash">❌ Crash: %1$s</string>
     <string name="sign_apk">Sign APK</string>
     <string name="import_signature">Import Signature</string>
     <string name="info_icon">Info</string>
+
+    <!-- New Strings -->
+    <string name="log_placeholder">Output Logs</string>
+    <string name="signature_ready_pk8">🔑 PK8 / PEM ready</string>
+    <string name="signature_ready_pkcs12">🔑 PKCS12 ready · %1$s</string>
+    <string name="signature_ready_pkcs12_no_alias">🔑 PKCS12 ready</string>
+    <string name="signature_no_key">🔒 No key imported</string>
+    <string name="button_pk8_pem_ready">PK8/PEM ✅</string>
+    <string name="button_signature_ready">Signature ✅</string>
+    <string name="log_line_count">%1$d lines</string>
+    <string name="error_no_content">Error: no content received.</string>
+    <string name="search_count">%1$d / %2$d</string>
+
+    <!-- CustomPatchActivity Strings -->
+    <string name="error_no_xml_received">No XML content received</string>
+    <string name="toast_undo">Undo</string>
+    <string name="toast_redo">Redo</string>
+    <string name="toast_nothing_to_reset">Nothing to reset</string>
+    <string name="dialog_reset_title">Reset selection</string>
+    <string name="dialog_reset_message">Clear all selected elements?</string>
+    <string name="btn_reset">Reset</string>
+    <string name="btn_cancel">Cancel</string>
+    <string name="error_select_mode_first">Select a mode first (🔴 or 🟡)</string>
+    <string name="dialog_bulk_select_title">Bulk select: &lt;%1$s&gt;</string>
+    <string name="dialog_bulk_deselect_msg">Deselect all %1$d &lt;%2$s&gt;?</string>
+    <string name="dialog_bulk_select_msg">Apply \'%1$s\' to all %2$d &lt;%3$s&gt;?</string>
+    <string name="btn_deselect_all">Deselect all</string>
+    <string name="btn_select_all">Select all</string>
+    <string name="mode_delete">delete</string>
+    <string name="mode_deactivate">deactivate</string>
+    <string name="toast_marked_deletion">Marked for deletion</string>
+    <string name="toast_marked_deactivation">Marked for deactivation</string>
+    <string name="toast_deselected">Deselected</string>
+    <string name="toast_bulk_result">%1$s: %2$d &lt;%3$s&gt;</string>
+    <string name="btn_delete_label">🔴  Delete</string>
+    <string name="btn_deactivate_label">🟡  Deactivate</string>
+    <string name="btn_delete_count_label">🔴  Delete  ·  %1$d</string>
+    <string name="btn_deactivate_count_label">🟡  Deactivate  ·  %1$d</string>
+    <string name="error_no_elements_selected">No elements selected</string>
+    <string name="dialog_summary_title">Patch Summary</string>
+    <string name="label_to_delete">🔴  TO DELETE  (%1$d)</string>
+    <string name="label_to_disable">🟡  TO DISABLE  (%1$d)</string>
+    <string name="btn_apply_now">Apply now</string>
+    <string name="btn_keep_editing">Keep editing</string>
+    <string name="menu_undo">Undo</string>
+    <string name="menu_redo">Redo</string>
+    <string name="menu_summary">Summary</string>
+    <string name="menu_reset">Reset all</string>
+    <string name="menu_apply">Apply</string>
+
+    <!-- ManifestSanitizer / Patcher Strings -->
+    <string name="log_step_extract_manifest">Step 1: Extracting AndroidManifest.xml…</string>
+    <string name="log_step_decode_manifest">Step 2: Decoding: AXML -> XML…</string>
+    <string name="log_step_patching">Step 3: Patching…</string>
+    <string name="log_step_encode_manifest">Step 4: Encoding: XML -> AXML…</string>
+    <string name="log_step_rebuild_apk">Step 5: Rebuilding APK…</string>
+    <string name="log_process_finished">Process finished.</string>
+    <string name="error_manifest_extraction">Manifest extraction failed</string>
+    <string name="error_decode_failed">Failed to decode AXML</string>
+    <string name="error_encode_failed">Failed to encode XML to AXML</string>
+    <string name="log_patched_successfully">Patched successfully !</string>
+    <string name="log_patched_count">Patched : %1$d elements</string>
+    <string name="log_custom_patch_applied">Custom Patch Applied: %1$d deleted, %2$d disabled.</string>
+    <string name="log_delete_node">Delete: &lt;%1$s&gt; index %2$d (%3$s)</string>
+    <string name="log_disable_node">Disable: &lt;%1$s&gt; index %2$d (%3$s)</string>
+    <string name="log_step_custom_patch">Step 3: Applying Custom Patch Rules…</string>
+    <string name="error_critical_xml">Critical XML Error: %1$s - %2$s</string>
+    <string name="error_applying_custom_patch">Error applying custom patch: %1$s</string>
+
+    <!-- MainActivity Dialogs and Toasts -->
+    <string name="toast_saved">Saved!</string>
+    <string name="error_invalid_cert">Invalid Certificate. Please select a .pem or .x509.pem file.</string>
+    <string name="toast_pk8_loaded">Private Key loaded. Now select the Certificate (.pem)</string>
+    <string name="error_unsupported_keystore">Only PKCS12 keystores (.p12 / .pfx) OR private keys (.pk8) are supported</string>
+    <string name="error_copy_apk_failed">Failed to copy APK: %1$s</string>
+    <string name="log_apk_size">Size: %1$s</string>
+    <string name="error_import_signature">Please import a signature first</string>
+    <string name="log_starting_process">⏳ Starting process for %1$s…</string>
+    <string name="log_extracting_manifest">Extracting manifest…</string>
+    <string name="log_manifest_ready">✅ Manifest ready — binary: %1$s</string>
+    <string name="log_manifest_preload_failed">⚠️ Manifest pre-load failed: %1$s</string>
+    <string name="log_starting_custom_patch">⏳ Starting custom patch…</string>
+    <string name="log_applying_custom_rules">Applying custom patch rules…</string>
+    <string name="log_signing_apk">Signing APK…</string>
+    <string name="log_signing_pk8_pem">🔏 Signing with PK8 + PEM…</string>
+    <string name="log_signing_pkcs12">🔏 Signing with PKCS12 keystore…</string>
+    <string name="log_signature_applied">✅ Signature applied.</string>
+    <string name="log_signature_failed">❌ Signature failed: %1$s. Saving unsigned.</string>
+    <string name="log_signature_skipped">ℹ️ Signature skipped (user choice).</string>
+    <string name="log_success_output">🎉 SUCCESS! Output: %1$s</string>
+    <string name="log_reading_manifest">Reading manifest…</string>
+    <string name="dialog_reading_manifest_title">Reading Manifest…</string>
+    <string name="dialog_parsing_axml_msg">Parsing AXML…</string>
+    <string name="log_raw_key_pair_loaded">🔑 Raw key pair loaded.</string>
+    <string name="toast_key_pair_loaded">Key Pair Loaded!</string>
+    <string name="dialog_supported_formats_title">Supported Signature Formats</string>
+    <string name="dialog_supported_formats_msg">✅ PKCS12 (.p12, .pfx)\n✅ Platform Keys (.pk8 + .pem)\n\n❌ JKS and BKS are NOT supported.\n\nUse MT Manager or Ads regex+ to convert.</string>
+    <string name="label_password">Password</string>
+    <string name="label_alias">Alias</string>
+    <string name="label_alias_password">Alias Password</string>
+    <string name="helper_same_password">Leave empty if same as keystore password</string>
+    <string name="dialog_import_signature_title">Import Signature</string>
+    <string name="error_password_required">Password is required</string>
+    <string name="error_keystore_load">⚠️ Keystore error: %1$s</string>
+    <string name="log_signature_loaded">🔑 Signature loaded (alias: %1$s)</string>
+    <string name="toast_logs_copied">Logs copied to clipboard</string>
+    <string name="dialog_faq_title">❓  FAQ</string>
+    <string name="dialog_faq_msg">Q: Which APK formats are supported?\nA: Any standard APK file (.apk).\n\nQ: Which signature formats are supported?\nA: PKCS12 (.p12 / .pfx) and platform key pairs (.pk8 + .pem). JKS and BKS are not supported.\n\nQ: Why does the output APK size differ slightly?\nA: The original signature is changed and the manifest is re-encoded + patched.\n\nQ: What\'s the patching process?\nA: The AndroidManifest.xml file will be patched for removing or disabling trackers and ads.\n\nQ: The app shows \"Manifest pre-load failed\". What does it mean?\nA: The APK may be encrypted or use a non-standard binary XML format.</string>
+    <string name="dialog_contact_title">✉️  Contact</string>
+    <string name="btn_close">Close</string>
+    <string name="dialog_credits_title">⭐  Credits</string>
+    <string name="dialog_credits_msg">Developer - Cawca-Fr\nEnglish language support - Cawca-Fr\nFrench language support - Cawca-Fr</string>
+    <string name="dialog_ressources_title">Resources</string>
+    <string name="dialog_ressources_msg">AMEditor\n\nOpen source libraries used:\n\n• apk-axml  — Binary XML codec\n  (AXML decode / encode)\n\n• apksig (Google)  — APK signing\n  V1 / V2 / V3 signatures\n\n• AndroidX / Material Components\n  (Google)\n\nBuilt with ❤️ using Kotlin</string>
+    <string name="dialog_changelog_title">Changelog</string>
+    <string name="dialog_changelog_msg">v1.0\n• Initial release\n• AndroidManifest.xml patching\n• Custom patch editor\n• Manifest preview\n• Sign output apk</string>
+
+    <!-- File Size Formats -->
+    <string name="format_mb">%.1f MB</string>
+    <string name="format_kb">%.1f KB</string>
+    <string name="format_b">%1$d B</string>
+    <string name="error_failed_general">Failed: %1$s</string>
+
+    <!-- Layout strings -->
+    <string name="label_apk_prefix">APK: </string>
+    <string name="label_axml_prefix">AXML: </string>
+    <string name="label_output_prefix">→ Output: </string>
+    <string name="btn_preview_xml">Preview XML</string>
+    <string name="btn_custom_patch">Custom Patch</string>
+    <string name="label_no_key_locked">🔒 No key imported</string>
+    <string name="label_output_title">OUTPUT</string>
+    <string name="hint_search_xml">Search in XML…</string>
+    <string name="desc_prev_result">Previous result</string>
+    <string name="desc_next_result">Next result</string>
+    <string name="desc_close_search">Close search</string>
+    <string name="desc_copy_logs">Copy logs</string>
+    <string name="desc_clear_logs">Clear logs</string>
+    <string name="label_loading">Loading…</string>
+    <string name="menu_language">Language  🌐</string>
+    <string name="menu_changelog">Changelog</string>
+    <string name="menu_faq">FAQ</string>
+    <string name="menu_contact">Contact</string>
+    <string name="menu_ressources">Ressources</string>
+    <string name="menu_credits">Credits</string>
+    <string name="menu_search">Search</string>
+    <string name="menu_copy_xml">Copy XML</string>
+
+    <!-- Importing Dialog -->
+    <string name="dialog_import_title">Importing APK</string>
+    <string name="dialog_import_subtitle">Reading AndroidManifest…</string>
+    <string name="dialog_import_note">You can continue using the app</string>
+
+    <string name="btn_ok">OK</string>
+    <string name="error_no_aliases">No aliases found.</string>
+    <string name="error_choose_alias">Choose alias: %1$s</string>
+    <string name="error_alias_not_found">Alias \'%1$s\' not found. Available: %2$s</string>
+    <string name="error_cannot_access_key">Cannot access key: wrong alias or key password.</string>
+    <string name="feedback_subject">[AMEditor] Feedback</string>
+    <string name="toast_xml_copied">XML copied to clipboard</string>
+    <string name="label_manifest_filename">AndroidManifest.xml</string>
+    <string name="btn_open_telegram">Open Telegram</string>
+    <string name="contact_telegram">Telegram Channel - t.me/manifestpatcher</string>
 
 </resources>

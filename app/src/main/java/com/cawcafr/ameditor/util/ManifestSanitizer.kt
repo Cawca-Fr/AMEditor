@@ -1,6 +1,8 @@
 package com.cawcafr.ameditor.util
 
+import android.content.Context
 import android.util.Log
+import com.cawcafr.ameditor.R
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import org.w3c.dom.Node
@@ -21,7 +23,7 @@ object ManifestSanitizer {
     /**
      * Nettoyage automatique standard (Trackers, etc.)
      */
-    fun sanitize(xmlContent: String, logCallback: (String) -> Unit): String {
+    fun sanitize(context: Context, xmlContent: String, logCallback: (String) -> Unit): String {
         return try {
             val factory = DocumentBuilderFactory.newInstance()
             factory.isNamespaceAware = true
@@ -43,13 +45,13 @@ object ManifestSanitizer {
             removedCount += removeIntentsAndPackages(doc)
 
             val totalPatched = removedCount + disabledCount
-            logCallback("Patched successfully !")
-            logCallback("Patched : $totalPatched elements")
+            logCallback(context.getString(R.string.log_patched_successfully))
+            logCallback(context.getString(R.string.log_patched_count, totalPatched))
 
             convertDocToString(doc)
         } catch (e: Exception) {
             Log.e(TAG, "XML Error", e)
-            logCallback("Critical XML Error: ${e.javaClass.simpleName} - ${e.message}")
+            logCallback(context.getString(R.string.error_critical_xml, e.javaClass.simpleName, e.message ?: ""))
             xmlContent
         }
     }
@@ -211,6 +213,7 @@ object ManifestSanitizer {
      * Résout le problème des doublons ou des éléments sans nom.
      */
     fun applyCustomPatch(
+        context: Context,
         xmlContent: String,
         patchData: CustomPatchData,
         logCallback: (String) -> Unit
@@ -263,11 +266,11 @@ object ManifestSanitizer {
                         // Action !
                         if (target.type == ActionType.DELETE) {
                             nodesToDelete.add(node)
-                            logCallback("Delete: <$cleanTagName> index $currentIndex ($nodeName)")
+                            logCallback(context.getString(R.string.log_delete_node, cleanTagName, currentIndex, nodeName))
                             deleted++
                         } else if (target.type == ActionType.DISABLE) {
                             nodesToDisable.add(node)
-                            logCallback("Disable: <$cleanTagName> index $currentIndex ($nodeName)")
+                            logCallback(context.getString(R.string.log_disable_node, cleanTagName, currentIndex, nodeName))
                             disabled++
                         }
                     }
@@ -289,12 +292,12 @@ object ManifestSanitizer {
                 }
             }
 
-            logCallback("Custom Patch Applied: $deleted deleted, $disabled disabled.")
+            logCallback(context.getString(R.string.log_custom_patch_applied, deleted, disabled))
             convertDocToString(doc)
 
         } catch (e: Exception) {
             Log.e(TAG, "Custom Patch Error", e)
-            logCallback("Error applying custom patch: ${e.message}")
+            logCallback(context.getString(R.string.error_applying_custom_patch, e.message ?: ""))
             xmlContent
         }
     }

@@ -4,32 +4,32 @@
 
     <item
         android:id="@+id/action_undo"
-        android:title="Undo"
+        android:title="@string/menu_undo"
         android:icon="@drawable/ic_undo"
         android:enabled="false"
         app:showAsAction="ifRoom" />
 
     <item
         android:id="@+id/action_redo"
-        android:title="Redo"
+        android:title="@string/menu_redo"
         android:icon="@drawable/ic_redo"
         android:enabled="false"
         app:showAsAction="ifRoom" />
 
     <item
         android:id="@+id/action_summary"
-        android:title="Summary"
+        android:title="@string/menu_summary"
         android:icon="@drawable/ic_list"
         app:showAsAction="ifRoom" />
 
     <item
         android:id="@+id/action_reset"
-        android:title="Reset all"
+        android:title="@string/menu_reset"
         app:showAsAction="never" />
 
     <item
         android:id="@+id/action_apply"
-        android:title="Apply"
+        android:title="@string/menu_apply"
         app:showAsAction="never" />
 
 </menu>

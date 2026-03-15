@@ -104,7 +104,7 @@ class CustomPatchActivity : AppCompatActivity() {
 
         xmlContent = XmlContentHolder.get() ?: intent.getStringExtra("XML_CONTENT") ?: ""
         if (xmlContent.isEmpty()) {
-            Toast.makeText(this, "No XML content received", Toast.LENGTH_LONG).show(); finish(); return
+            Toast.makeText(this, getString(R.string.error_no_xml_received), Toast.LENGTH_LONG).show(); finish(); return
         }
         startRender()
     }
@@ -140,21 +140,6 @@ class CustomPatchActivity : AppCompatActivity() {
 
     // ════════════════════════════════════════════════════════════════════════
     // Rendu — PrecomputedTextCompat + viewport colorization
-    //
-    // Séquence pour les grands fichiers (> PLAIN_THRESHOLD) :
-    //   1. Dialog "Parsing…"              → affiché pendant le background
-    //   2. Background :
-    //      a. parseNodes(xmlContent)      → construit l'arbre pour les taps
-    //      b. PrecomputedTextCompat.create(plainText, params)  → layout sans spans
-    //   3. Main thread :
-    //      a. setPrecomputedText()        → INSTANTANÉ (layout déjà calculé)
-    //      b. isParsed = true             → taps activés
-    //      c. Dialog fermé
-    //      d. updateViewportSpans()       → colorise la zone visible
-    //   4. Background :
-    //      computeAllSpanInfos()          → calcul de couleurs en parallèle
-    //   5. MainThread (après spans prêts) : allSpanInfos = …; updateViewportSpans()
-    //   6. ScrollListener debounce 100ms  → updateViewportSpans()
     // ════════════════════════════════════════════════════════════════════════
 
     private fun startRender() {
@@ -199,7 +184,7 @@ class CustomPatchActivity : AppCompatActivity() {
                 runOnUiThread {
                     isParsed = true
                     loadingDialog?.dismiss(); loadingDialog = null
-                    Toast.makeText(this, "Render failed: ${e.message}", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, getString(R.string.generic_error_exception, e.message), Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
@@ -304,7 +289,7 @@ class CustomPatchActivity : AppCompatActivity() {
         val dp6 = 6f * resources.displayMetrics.density
         scrollbarThumb.background = android.graphics.drawable.GradientDrawable().apply {
             shape = android.graphics.drawable.GradientDrawable.RECTANGLE; cornerRadius = dp6
-            setColor(android.graphics.Color.parseColor(hex))
+            setColor(hex.toColorInt())
         }
     }
 
@@ -332,8 +317,8 @@ class CustomPatchActivity : AppCompatActivity() {
     private fun refreshButtonLabels() {
         val dc = nodeStates.values.count { it == Mode.DELETE }
         val ac = nodeStates.values.count { it == Mode.DEACTIVATE }
-        btnDelete.text     = if (dc > 0) "🔴  Delete  ·  $dc"     else "🔴  Delete"
-        btnDeactivate.text = if (ac > 0) "🟡  Deactivate  ·  $ac" else "🟡  Deactivate"
+        btnDelete.text     = if (dc > 0) getString(R.string.btn_delete_count_label, dc)     else getString(R.string.btn_delete_label)
+        btnDeactivate.text = if (ac > 0) getString(R.string.btn_deactivate_count_label, ac) else getString(R.string.btn_deactivate_label)
     }
 
     private fun setupButtons() {
@@ -361,8 +346,8 @@ class CustomPatchActivity : AppCompatActivity() {
         if (undoStack.size > MAX_UNDO) undoStack.removeFirst()
         redoStack.clear(); updateUndoRedoMenuItems()
     }
-    private fun undo() { if (undoStack.isEmpty()) return; redoStack.addLast(nodeStates.toMap()); restoreState(undoStack.removeLast()); updateUndoRedoMenuItems(); Toast.makeText(this, "Undo", Toast.LENGTH_SHORT).show() }
-    private fun redo() { if (redoStack.isEmpty()) return; undoStack.addLast(nodeStates.toMap()); restoreState(redoStack.removeLast()); updateUndoRedoMenuItems(); Toast.makeText(this, "Redo", Toast.LENGTH_SHORT).show() }
+    private fun undo() { if (undoStack.isEmpty()) return; redoStack.addLast(nodeStates.toMap()); restoreState(undoStack.removeLast()); updateUndoRedoMenuItems(); Toast.makeText(this, getString(R.string.toast_undo), Toast.LENGTH_SHORT).show() }
+    private fun redo() { if (redoStack.isEmpty()) return; undoStack.addLast(nodeStates.toMap()); restoreState(redoStack.removeLast()); updateUndoRedoMenuItems(); Toast.makeText(this, getString(R.string.toast_redo), Toast.LENGTH_SHORT).show() }
 
     private fun restoreState(snap: Map<Int, Mode>) {
         val changed = (nodeStates.keys + snap.keys).toSet()
@@ -377,30 +362,38 @@ class CustomPatchActivity : AppCompatActivity() {
     // ════════════════════════════════════════════════════════════════════════
 
     private fun resetAll() {
-        if (nodeStates.isEmpty()) { Toast.makeText(this, "Nothing to reset", Toast.LENGTH_SHORT).show(); return }
-        AlertDialog.Builder(this).setTitle("Reset selection").setMessage("Clear all selected elements?")
-            .setPositiveButton("Reset") { _, _ ->
+        if (nodeStates.isEmpty()) { Toast.makeText(this, getString(R.string.toast_nothing_to_reset), Toast.LENGTH_SHORT).show(); return }
+        AlertDialog.Builder(this).setTitle(getString(R.string.dialog_reset_title)).setMessage(getString(R.string.dialog_reset_message))
+            .setPositiveButton(getString(R.string.btn_reset)) { _, _ ->
                 pushUndoState()
                 val changed = nodeStates.keys.mapNotNull { k -> allNodes.find { it.index == k } }.toSet()
                 nodeStates.clear(); updateVisuals(changed); refreshButtonLabels()
-            }.setNegativeButton("Cancel", null).show()
+            }.setNegativeButton(getString(R.string.btn_cancel), null).show()
     }
 
     private fun showSelectAllDialog(tagName: String) {
-        if (currentMode == Mode.NONE) { Toast.makeText(this, "Select a mode first (🔴 or 🟡)", Toast.LENGTH_SHORT).show(); return }
+        if (currentMode == Mode.NONE) { Toast.makeText(this, getString(R.string.error_select_mode_first), Toast.LENGTH_SHORT).show(); return }
         val same = allNodes.filter { it.tagName.equals(tagName, ignoreCase = true) && !PROTECTED_TAGS.contains(it.tagName.lowercase()) }
         if (same.isEmpty()) return
         val allSet    = same.all { nodeStates[it.index] == currentMode }
-        val modeLabel = if (currentMode == Mode.DELETE) "delete" else "deactivate"
-        AlertDialog.Builder(this).setTitle("Bulk select: <$tagName>")
-            .setMessage(if (allSet) "Deselect all ${same.size} <$tagName>?" else "Apply '$modeLabel' to all ${same.size} <$tagName>?")
-            .setPositiveButton(if (allSet) "Deselect all" else "Select all") { _, _ ->
+        val modeLabel = if (currentMode == Mode.DELETE) getString(R.string.mode_delete) else getString(R.string.mode_deactivate)
+        val msg = if (allSet) getString(R.string.dialog_bulk_deselect_msg, same.size, tagName)
+                  else getString(R.string.dialog_bulk_select_msg, modeLabel, same.size, tagName)
+
+        AlertDialog.Builder(this).setTitle(getString(R.string.dialog_bulk_select_title, tagName))
+            .setMessage(msg)
+            .setPositiveButton(if (allSet) getString(R.string.btn_deselect_all) else getString(R.string.btn_select_all)) { _, _ ->
                 pushUndoState()
                 val changed = mutableSetOf<XmlNode>(); val mode: Mode? = if (allSet) null else currentMode
                 same.forEach { applyModeToNodeAndChildren(it, mode, changed) }
                 updateVisuals(changed); refreshButtonLabels()
-                Toast.makeText(this, "${when(mode){Mode.DELETE->"Marked for deletion";Mode.DEACTIVATE->"Marked for deactivation";else->"Deselected"}}: ${same.size} <$tagName>", Toast.LENGTH_SHORT).show()
-            }.setNegativeButton("Cancel", null).show()
+                val resLabel = when(mode) {
+                    Mode.DELETE -> getString(R.string.toast_marked_deletion)
+                    Mode.DEACTIVATE -> getString(R.string.toast_marked_deactivation)
+                    else -> getString(R.string.toast_deselected)
+                }
+                Toast.makeText(this, getString(R.string.toast_bulk_result, resLabel, same.size, tagName), Toast.LENGTH_SHORT).show()
+            }.setNegativeButton(getString(R.string.btn_cancel), null).show()
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -554,16 +547,16 @@ class CustomPatchActivity : AppCompatActivity() {
     }
 
     private fun showSummaryDialog() {
-        if (nodeStates.isEmpty()) { Toast.makeText(this, "No elements selected", Toast.LENGTH_SHORT).show(); return }
+        if (nodeStates.isEmpty()) { Toast.makeText(this, getString(R.string.error_no_elements_selected), Toast.LENGTH_SHORT).show(); return }
         val om  = computeOccurrenceMap()
         val del = allNodes.filter { nodeStates[it.index] == Mode.DELETE }.sortedBy { it.start }
         val dis = allNodes.filter { nodeStates[it.index] == Mode.DEACTIVATE }.sortedBy { it.start }
         val sb  = StringBuilder()
-        if (del.isNotEmpty()) { sb.appendLine("🔴  TO DELETE  (${del.size})"); sb.appendLine("─────────────────────────"); sb.append(buildHierarchicalSummary(del, om)) }
-        if (dis.isNotEmpty()) { if (sb.isNotEmpty()) sb.appendLine(); sb.appendLine("🟡  TO DISABLE  (${dis.size})"); sb.appendLine("─────────────────────────"); sb.append(buildHierarchicalSummary(dis, om)) }
-        AlertDialog.Builder(this).setTitle("Patch Summary").setMessage(sb.toString())
-            .setPositiveButton("Apply now") { _, _ -> applyPatch() }
-            .setNegativeButton("Keep editing", null).show()
+        if (del.isNotEmpty()) { sb.appendLine(getString(R.string.label_to_delete, del.size)); sb.appendLine("─────────────────────────"); sb.append(buildHierarchicalSummary(del, om)) }
+        if (dis.isNotEmpty()) { if (sb.isNotEmpty()) sb.appendLine(); sb.appendLine(getString(R.string.label_to_disable, dis.size)); sb.appendLine("─────────────────────────"); sb.append(buildHierarchicalSummary(dis, om)) }
+        AlertDialog.Builder(this).setTitle(getString(R.string.dialog_summary_title)).setMessage(sb.toString())
+            .setPositiveButton(getString(R.string.btn_apply_now)) { _, _ -> applyPatch() }
+            .setNegativeButton(getString(R.string.btn_keep_editing), null).show()
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -591,7 +584,7 @@ class CustomPatchActivity : AppCompatActivity() {
     // ════════════════════════════════════════════════════════════════════════
 
     private fun applyPatch() {
-        if (nodeStates.isEmpty()) { Toast.makeText(this, "No elements selected", Toast.LENGTH_SHORT).show(); return }
+        if (nodeStates.isEmpty()) { Toast.makeText(this, getString(R.string.error_no_elements_selected), Toast.LENGTH_SHORT).show(); return }
         val targets = mutableListOf<PatchTarget>(); val counters = mutableMapOf<String, Int>()
         allNodes.sortedBy { it.index }.forEach { node ->
             val idx = counters.getOrDefault(node.tagName, 0)

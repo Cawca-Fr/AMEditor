@@ -3,7 +3,6 @@ package com.cawcafr.ameditor
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.graphics.Color
 import android.graphics.drawable.GradientDrawable
 import android.os.Bundle
 import android.os.Handler
@@ -29,6 +28,8 @@ import androidx.core.widget.NestedScrollView
 import androidx.core.widget.TextViewCompat
 import androidx.core.widget.doAfterTextChanged
 import com.cawcafr.ameditor.util.XmlSyntaxHighlighter
+import androidx.core.graphics.toColorInt
+import androidx.core.view.isVisible
 
 class XmlPreviewActivity : AppCompatActivity() {
 
@@ -114,7 +115,7 @@ class XmlPreviewActivity : AppCompatActivity() {
         setupSearch()
 
         xmlContent = XmlContentHolder.get() ?: intent.getStringExtra("XML_CONTENT") ?: ""
-        if (xmlContent.isEmpty()) { codeTextView.text = "Error: no content received."; return }
+        if (xmlContent.isEmpty()) { codeTextView.text = getString(R.string.error_no_content); return }
 
         startRender()
     }
@@ -288,7 +289,7 @@ class XmlPreviewActivity : AppCompatActivity() {
         var idx = fullText.indexOf(query, ignoreCase = true)
         while (idx >= 0) { searchResults.add(idx); idx = fullText.indexOf(query, idx + 1, ignoreCase = true) }
         if (searchResults.isEmpty()) {
-            tvSearchCount.text = "0"; tvSearchCount.setTextColor(Color.parseColor("#D32F2F")); return
+            tvSearchCount.text = "0"; tvSearchCount.setTextColor("#D32F2F".toColorInt()); return
         }
         tvSearchCount.setTextColor(resources.getColor(android.R.color.darker_gray, theme))
         for (pos in searchResults) {
@@ -306,7 +307,7 @@ class XmlPreviewActivity : AppCompatActivity() {
             direction > 0      -> (currentResult + 1) % searchResults.size
             else               -> (currentResult - 1 + searchResults.size) % searchResults.size
         }
-        tvSearchCount.text = "${currentResult + 1} / ${searchResults.size}"
+        tvSearchCount.text = getString(R.string.search_count, currentResult + 1, searchResults.size)
         val spannable = codeTextView.text as? Spannable ?: return
         currentMatchSpan.forEach { spannable.removeSpan(it) }; currentMatchSpan.clear()
         val pos = searchResults[currentResult]
@@ -403,7 +404,7 @@ class XmlPreviewActivity : AppCompatActivity() {
     private fun setThumbColor(hex: String) {
         val dp6 = 6f * resources.displayMetrics.density
         scrollbarThumb.background = GradientDrawable().apply {
-            shape = GradientDrawable.RECTANGLE; cornerRadius = dp6; setColor(Color.parseColor(hex))
+            shape = GradientDrawable.RECTANGLE; cornerRadius = dp6; setColor(hex.toColorInt())
         }
     }
 
@@ -424,7 +425,7 @@ class XmlPreviewActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
         android.R.id.home -> { finish(); true }
-        MENU_SEARCH -> { if (searchBar.visibility == View.VISIBLE) closeSearch() else openSearch(); true }
+        MENU_SEARCH -> { if (searchBar.isVisible) closeSearch() else openSearch(); true }
         MENU_COPY   -> {
             val cb = getSystemService(ClipboardManager::class.java)
             cb.setPrimaryClip(ClipData.newPlainText("AndroidManifest.xml", xmlContent))

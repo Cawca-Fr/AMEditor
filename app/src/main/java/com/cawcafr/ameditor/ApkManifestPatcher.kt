@@ -27,42 +27,46 @@ class ApkManifestPatcher(private val context: Context) {
         try {
             workDir.mkdirs()
 
-            logCallback("Step 1: Extracting AndroidManifest.xml...")
+            logCallback(context.getString(R.string.log_step_extract_manifest))
             val binaryManifest = File(workDir, "AndroidManifest.xml")
             if (!extractManifestFromApk(inputApk, binaryManifest)) {
-                return PatchResult.Error("Manifest extraction failed")
+                return PatchResult.Error(context.getString(R.string.error_manifest_extraction))
             }
+            // Taille binaire réelle du manifest dans l'APK (ZipEntry, pas la string décodée)
+            val manifestInputSize = binaryManifest.length()
 
-            logCallback("Step 2: Decoding: AXML -> XML...")
+            logCallback(context.getString(R.string.log_step_decode_manifest))
             val xmlString = decodeManifestToString(binaryManifest)
-                ?: return PatchResult.Error("Failed to decode AXML")
+                ?: return PatchResult.Error(context.getString(R.string.error_decode_failed))
 
-            logCallback("Step 3: Patching...")
-            val cleanedXmlString = ManifestSanitizer.sanitize(xmlString, logCallback)
+            logCallback(context.getString(R.string.log_step_patching))
+            val cleanedXmlString = ManifestSanitizer.sanitize(context, xmlString, logCallback)
 
-            logCallback("Step 4: Encoding: XML -> AXML...")
+            logCallback(context.getString(R.string.log_step_encode_manifest))
             val newBinaryManifest = File(workDir, "AndroidManifest_patched.xml")
             if (!encodeStringToAxml(cleanedXmlString, newBinaryManifest)) {
-                return PatchResult.Error("Failed to encode XML to AXML")
+                return PatchResult.Error(context.getString(R.string.error_encode_failed))
             }
+            val manifestOutputSize = newBinaryManifest.length()
 
-            logCallback("Step 5: Rebuilding APK...")
+            logCallback(context.getString(R.string.log_step_rebuild_apk))
             ApkRebuilder.rebuildApk(inputApk, newBinaryManifest, outputApk)
 
-            // ── FIX CACHE : supprimer l'APK source dès que le rebuild est terminé ──
-            // inputApk = selected_internal.apk (~154 MB) — plus nécessaire après ça
             if (inputApk.name == "selected_internal.apk") {
                 inputApk.delete()
                 Log.d(TAG, "Input APK deleted from cache after rebuild")
             }
 
-            logCallback("Process finished.")
-            return PatchResult.Success(outputApk, PatchStats(1, 1))
+            logCallback(context.getString(R.string.log_process_finished))
+            return PatchResult.Success(
+                outputApk,
+                PatchStats(1, 1, manifestInputSize, manifestOutputSize)
+            )
 
         } catch (e: Exception) {
             e.printStackTrace()
-            logCallback("Error: ${e.message}")
-            return PatchResult.Error("Error: ${e.message}")
+            logCallback(context.getString(R.string.generic_error_exception, e.message))
+            return PatchResult.Error(context.getString(R.string.generic_error_exception, e.message))
         } finally {
             workDir.deleteRecursively()
         }
@@ -84,21 +88,29 @@ class ApkManifestPatcher(private val context: Context) {
         } catch (e: Exception) { false }
     }
 
-    fun fetchManifestContent(apkFile: File): String {
-        // Pas de copie ici — on lit directement depuis le ZipFile en streaming.
-        // Aucun fichier temporaire créé, aucun impact sur le cache.
-        var zipFile: ZipFile? = null
-        try {
-            zipFile = ZipFile(apkFile)
-            val entry = zipFile.getEntry("AndroidManifest.xml")
+    /**
+     * Décode le manifest pour la prévisualisation.
+     * Retourne la paire (xmlString, binarySize) :
+     *   - xmlString   : XML lisible (pour affichage / XmlContentHolder)
+     *   - binarySize  : taille réelle du binaire AXML dans le ZIP (pour affichage)
+     *
+     * IMPORTANT : binarySize ≠ xmlString.length — le binaire AXML est toujours
+     * plus compact que la représentation texte XML (~14 KB d'écart typique).
+     */
+    fun fetchManifestContent(apkFile: File): Pair<String, Long> {
+        ZipFile(apkFile).use { zip ->
+            val entry = zip.getEntry("AndroidManifest.xml")
                 ?: throw Exception("AndroidManifest.xml not found in APK")
-            val inputStream = zipFile.getInputStream(entry)
-            return aXMLDecoder(inputStream).decodeAsString()
-                ?: throw Exception("Failed to decode AXML")
-        } catch (e: Exception) {
-            throw Exception("Preview Error: ${e.message}")
-        } finally {
-            zipFile?.close()
+
+            // Taille binaire réelle depuis les métadonnées ZIP (pas la string décodée)
+            val binarySize = entry.size   // octets du binaire AXML dans le ZIP
+
+            val xmlString = zip.getInputStream(entry).use { stream ->
+                aXMLDecoder(stream).decodeAsString()
+                    ?: throw Exception("Failed to decode AXML")
+            }
+
+            return Pair(xmlString, binarySize)
         }
     }
 
@@ -125,23 +137,29 @@ class ApkManifestPatcher(private val context: Context) {
             workDir.mkdirs()
             val binaryManifest = File(workDir, "AndroidManifest.xml")
             extractManifestFromApk(inputApk, binaryManifest)
-            val xmlString = decodeManifestToString(binaryManifest)
-                ?: return PatchResult.Error("Decode failed")
+            val manifestInputSize = binaryManifest.length()
 
-            logCallback("Step 3: Applying Custom Patch Rules...")
-            val cleanedXmlString = ManifestSanitizer.applyCustomPatch(xmlString, patchData, logCallback)
+            val xmlString = decodeManifestToString(binaryManifest)
+                ?: return PatchResult.Error(context.getString(R.string.error_decode_failed))
+
+            logCallback(context.getString(R.string.log_step_custom_patch))
+            val cleanedXmlString = ManifestSanitizer.applyCustomPatch(context, xmlString, patchData, logCallback)
 
             val newBinaryManifest = File(workDir, "AndroidManifest_patched.xml")
             encodeStringToAxml(cleanedXmlString, newBinaryManifest)
+            val manifestOutputSize = newBinaryManifest.length()
+
             ApkRebuilder.rebuildApk(inputApk, newBinaryManifest, outputApk)
 
-            // ── FIX CACHE : même chose ici ──
             if (inputApk.name == "selected_internal.apk") {
                 inputApk.delete()
                 Log.d(TAG, "Input APK deleted from cache after custom patch")
             }
 
-            return PatchResult.Success(outputApk, PatchStats(1, 1))
+            return PatchResult.Success(
+                outputApk,
+                PatchStats(1, 1, manifestInputSize, manifestOutputSize)
+            )
         } catch (e: Exception) {
             return PatchResult.Error(e.message ?: "Unknown error")
         } finally {
@@ -157,5 +175,9 @@ sealed class PatchResult {
 
 data class PatchStats(
     val removedComponents: Int,
-    val neutralizedConfigs: Int
+    val neutralizedConfigs: Int,
+    /** Taille du binaire AXML original dans l'APK (ZipEntry.size). */
+    val manifestInputSize: Long  = 0L,
+    /** Taille du binaire AXML patché (fichier encodé avant injection). */
+    val manifestOutputSize: Long = 0L
 )

@@ -8,6 +8,7 @@
     android:fitsSystemWindows="true"
     tools:context=".MainActivity">
 
+    <!-- TOOLBAR -->
     <com.google.android.material.appbar.AppBarLayout
         android:id="@+id/appBarLayout"
         android:layout_width="0dp"
@@ -26,15 +27,135 @@
             android:titleTextColor="@color/white"
             app:titleCentered="true"
             app:titleTextAppearance="@style/TextAppearance.AMEditor.Toolbar.Title"
-            app:theme="@style/ThemeOverlay.AMEditor.Toolbar" />
+            app:theme="@style/ThemeOverlay.AMEditor.Toolbar"
+            app:popupTheme="@style/ThemeOverlay.AMEditor.Popup" />
 
     </com.google.android.material.appbar.AppBarLayout>
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         3 boutons en ligne — chacun weight=1 donc taille identique
-         textSize 12sp + minWidth=0dp pour permettre la réduction
-         sur les très petits écrans (< 360dp)
-         ═══════════════════════════════════════════════════════════════ -->
+    <!-- ══════════════════════════════════════════════════════════════════
+         BANDEAU TAILLES APK & MANIFEST
+         ══════════════════════════════════════════════════════════════════ -->
+    <LinearLayout
+        android:id="@+id/apkInfoBar"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:gravity="center"
+        android:paddingHorizontal="16dp"
+        android:paddingVertical="8dp"
+        android:background="#F0F4FF"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/appBarLayout"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:visibility="visible">
+
+        <!-- Ligne APK -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_apk_prefix"
+                android:textSize="11sp"
+                android:textColor="#6B7280" />
+
+            <TextView
+                android:id="@+id/apkSizeText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:textColor="#1E3A5F"
+                tools:text="144.5 MB" />
+
+            <TextView
+                android:id="@+id/apkOutputSizeLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/label_output_prefix"
+                android:textSize="11sp"
+                android:textColor="#6B7280"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+            <TextView
+                android:id="@+id/apkOutputSizeText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:textColor="#16A34A"
+                android:visibility="gone"
+                tools:text="41.2 MB"
+                tools:visibility="visible" />
+        </LinearLayout>
+
+        <!-- Ligne Manifest -->
+        <LinearLayout
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="2dp">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="@string/label_axml_prefix"
+                android:textSize="11sp"
+                android:textColor="#6B7280" />
+
+            <TextView
+                android:id="@+id/manifestSizeText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:textColor="#1E3A5F"
+                tools:text="45 KB" />
+
+            <TextView
+                android:id="@+id/manifestOutputSizeLabel"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:text="@string/label_output_prefix"
+                android:textSize="11sp"
+                android:textColor="#6B7280"
+                android:visibility="gone"
+                tools:visibility="visible" />
+
+            <TextView
+                android:id="@+id/manifestOutputSizeText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:textColor="#16A34A"
+                android:visibility="gone"
+                tools:text="48 KB"
+                tools:visibility="visible" />
+        </LinearLayout>
+
+    </LinearLayout>
+
+    <View
+        android:id="@+id/apkInfoDivider"
+        android:layout_width="0dp"
+        android:layout_height="1dp"
+        android:background="#C7D7F0"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/apkInfoBar"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- BOUTONS PRINCIPAUX -->
     <LinearLayout
         android:id="@+id/buttonContainer"
         android:layout_width="0dp"
@@ -42,8 +163,8 @@
         android:orientation="horizontal"
         android:gravity="center"
         android:padding="16dp"
-        android:layout_marginTop="8dp"
-        app:layout_constraintTop_toBottomOf="@id/appBarLayout"
+        android:layout_marginTop="4dp"
+        app:layout_constraintTop_toBottomOf="@id/apkInfoDivider"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
@@ -65,7 +186,7 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_marginHorizontal="4dp"
-            android:text="Preview XML"
+            android:text="@string/btn_preview_xml"
             android:enabled="false"
             android:textSize="12sp"
             android:minWidth="0dp"
@@ -87,6 +208,7 @@
 
     </LinearLayout>
 
+    <!-- CUSTOM PATCH -->
     <LinearLayout
         android:id="@+id/customPatchContainer"
         android:layout_width="0dp"
@@ -102,27 +224,14 @@
             android:id="@+id/customPatchButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Custom Patch"
+            android:text="@string/btn_custom_patch"
             android:enabled="false"
             android:textSize="12sp"
             style="@style/Widget.MaterialComponents.Button.UnelevatedButton" />
 
     </LinearLayout>
 
-    <!-- ═══════════════════════════════════════════════════════════════
-         SIGNATURE ROW — 3 éléments en ligne :
-           [CheckBox  weight=1] [Button weight=1] [InfoButton 36dp fixe]
-
-         RÈGLES :
-         • CheckBox et Button ont layout_width="0dp" + weight="1"
-           → ils se partagent l'espace disponible à 50/50
-           → sur petit écran le texte est tronqué (ellipsize) mais visible
-         • minWidth="0dp" sur MaterialButton : sans ça, Material impose
-           une largeur minimale ~64dp qui peut écraser les autres éléments
-         • ImageButton fixe 36dp — toujours visible, jamais écrasé
-           car il n'a pas de weight et sa taille est fixe
-         • paddingHorizontal réduit à 4dp sur le bouton pour gagner de la place
-         ═══════════════════════════════════════════════════════════════ -->
+    <!-- SIGNATURE ROW -->
     <LinearLayout
         android:id="@+id/signatureContainer"
         android:layout_width="0dp"
@@ -160,7 +269,6 @@
             android:paddingHorizontal="4dp"
             style="@style/Widget.MaterialComponents.Button.TextButton" />
 
-        <!-- Taille fixe 36dp — jamais écrasé car pas de weight -->
         <ImageButton
             android:id="@+id/infoButton"
             android:layout_width="36dp"
@@ -174,37 +282,164 @@
 
     </LinearLayout>
 
-    <!-- Zone des logs — prend tout l'espace restant -->
+    <!-- BADGE ÉTAT SIGNATURE -->
+    <TextView
+        android:id="@+id/signatureBadge"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="14dp"
+        android:paddingBottom="4dp"
+        android:textSize="11sp"
+        android:textColor="#9CA3AF"
+        android:text="@string/label_no_key_locked"
+        app:layout_constraintTop_toBottomOf="@id/signatureContainer"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent" />
+
+    <!-- BARRE DE PROGRESSION -->
+    <LinearLayout
+        android:id="@+id/progressContainer"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="6dp"
+        android:paddingBottom="2dp"
+        android:visibility="gone"
+        app:layout_constraintTop_toBottomOf="@id/signatureBadge"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"
+        tools:visibility="visible">
+
+        <ProgressBar
+            android:id="@+id/processProgressBar"
+            style="@android:style/Widget.Material.ProgressBar.Horizontal"
+            android:layout_width="match_parent"
+            android:layout_height="4dp"
+            android:indeterminate="true" />
+
+        <TextView
+            android:id="@+id/progressStepText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:textSize="11sp"
+            android:textColor="#6B7280"
+            android:gravity="end"
+            tools:text="Step 3 — Rebuilding APK…" />
+
+    </LinearLayout>
+
+    <!-- ZONE DE LOGS -->
     <androidx.cardview.widget.CardView
         android:id="@+id/logCard"
         android:layout_width="0dp"
         android:layout_height="0dp"
-        android:layout_margin="16dp"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="16dp"
         app:cardCornerRadius="12dp"
         app:cardElevation="4dp"
-        app:layout_constraintTop_toBottomOf="@id/signatureContainer"
+        app:layout_constraintTop_toBottomOf="@id/progressContainer"
         app:layout_constraintBottom_toBottomOf="parent"
         app:layout_constraintStart_toStartOf="parent"
         app:layout_constraintEnd_toEndOf="parent">
 
-        <ScrollView
-            android:id="@+id/logScrollView"
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="match_parent"
-            android:padding="12dp"
-            android:scrollbars="vertical">
+            android:orientation="vertical">
 
-            <TextView
-                android:id="@+id/logTextView"
+            <!-- En-tête logs -->
+            <LinearLayout
+                android:id="@+id/logHeader"
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:fontFamily="monospace"
-                android:textSize="14sp"
-                android:textColor="@android:color/black"
-                android:text="@string/Output"
-                android:lineSpacingExtra="2dp" />
+                android:layout_height="38dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:paddingStart="12dp"
+                android:paddingEnd="4dp"
+                android:background="#F9FAFB">
 
-        </ScrollView>
+                <!-- Titre "OUTPUT" -->
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/label_output_title"
+                    android:textSize="11sp"
+                    android:textStyle="bold"
+                    android:textColor="#9CA3AF"
+                    android:letterSpacing="0.1" />
+
+                <!-- Compteur de lignes -->
+                <TextView
+                    android:id="@+id/logLineCount"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginEnd="2dp"
+                    android:textSize="11sp"
+                    android:textColor="#9CA3AF"
+                    android:visibility="gone"
+                    tools:text="12 lines"
+                    tools:visibility="visible" />
+
+                <!-- Copier les logs -->
+                <ImageButton
+                    android:id="@+id/logCopyButton"
+                    android:layout_width="34dp"
+                    android:layout_height="34dp"
+                    android:src="@drawable/ic_copy"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/desc_copy_logs"
+                    android:scaleType="centerInside"
+                    android:padding="7dp"
+                    android:visibility="gone"
+                    app:tint="#9CA3AF"
+                    tools:visibility="visible" />
+
+                <!-- Effacer les logs -->
+                <ImageButton
+                    android:id="@+id/logClearButton"
+                    android:layout_width="34dp"
+                    android:layout_height="34dp"
+                    android:src="@drawable/ic_delete"
+                    android:background="?attr/selectableItemBackgroundBorderless"
+                    android:contentDescription="@string/desc_clear_logs"
+                    android:scaleType="centerInside"
+                    android:padding="7dp"
+                    android:visibility="gone"
+                    app:tint="#9CA3AF"
+                    tools:visibility="visible" />
+
+            </LinearLayout>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="#E5E7EB" />
+
+            <ScrollView
+                android:id="@+id/logScrollView"
+                android:layout_width="match_parent"
+                android:layout_height="match_parent"
+                android:padding="12dp"
+                android:scrollbars="vertical"
+                android:fillViewport="true">
+
+                <TextView
+                    android:id="@+id/logTextView"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="monospace"
+                    android:textSize="12sp"
+                    android:lineSpacingExtra="3dp"
+                    android:text="@string/log_placeholder"
+                    android:textColor="#9CA3AF" />
+
+            </ScrollView>
+
+        </LinearLayout>
 
     </androidx.cardview.widget.CardView>
 

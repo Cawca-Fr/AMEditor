@@ -25,15 +25,24 @@
         <item name="android:textColor">@color/white</item>
     </style>
 
-    <style name="ThemeOverlay.AMEditor.Toolbar" parent="ThemeOverlay.AppCompat.ActionBar">
+    <!-- Thème appliqué à la Toolbar : texte blanc pour le titre et les icônes -->
+    <style name="ThemeOverlay.AMEditor.Toolbar" parent="ThemeOverlay.Material3.Dark.ActionBar">
         <item name="colorControlNormal">@color/white</item>
         <item name="android:textColorPrimary">@color/white</item>
-        <item name="actionOverflowMenuStyle">@style/AMEditor.OverflowMenu</item>
     </style>
 
-    <!-- Fond blanc + texte sombre → menu overflow lisible sur fond violet -->
-    <style name="AMEditor.OverflowMenu" parent="Widget.AppCompat.Light.PopupMenu.Overflow">
-        <item name="android:popupBackground">@android:color/white</item>
+    <!-- Thème appliqué au menu contextuel (Overflow) : fond blanc et texte noir -->
+    <style name="AMEditor.OverflowMenu" parent="Widget.Material3.PopupMenu.Overflow">
         <item name="android:textColor">@color/black</item>
+        <item name="android:textColorPrimary">@color/black</item>
+        <item name="android:background">@color/white</item>
+    </style>
+
+    <style name="ThemeOverlay.AMEditor.Popup" parent="ThemeOverlay.Material3.Light">
+        <item name="android:textColor">@color/black</item>
+        <item name="android:textColorPrimary">@color/black</item>
+        <item name="android:background">@color/white</item>
+        <!-- On lie le style spécifique de l'overflow pour éviter le double affichage/animation -->
+        <item name="actionOverflowMenuStyle">@style/AMEditor.OverflowMenu</item>
     </style>
 </resources>

@@ -48,7 +48,7 @@
             android:layout_weight="1"
             android:background="@drawable/search_field_bg"
             android:fontFamily="monospace"
-            android:hint="Search in XML…"
+            android:hint="@string/hint_search_xml"
             android:imeOptions="actionSearch"
             android:inputType="text"
             android:maxLines="1"
@@ -73,7 +73,7 @@
             android:layout_height="32dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_arrow_up"
-            android:contentDescription="Previous result" />
+            android:contentDescription="@string/desc_prev_result" />
 
         <ImageButton
             android:id="@+id/btnSearchNext"
@@ -81,7 +81,7 @@
             android:layout_height="32dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_arrow_down"
-            android:contentDescription="Next result" />
+            android:contentDescription="@string/desc_next_result" />
 
         <ImageButton
             android:id="@+id/btnSearchClose"
@@ -90,7 +90,7 @@
             android:layout_marginStart="2dp"
             android:background="?attr/selectableItemBackgroundBorderless"
             android:src="@drawable/ic_close"
-            android:contentDescription="Close search" />
+            android:contentDescription="@string/desc_close_search" />
 
     </LinearLayout>
 
@@ -133,7 +133,7 @@
                     android:scrollHorizontally="true"
                     android:textIsSelectable="true"
                     android:textSize="12sp"
-                    android:text="Loading…" />
+                    android:text="@string/label_loading" />
 
             </HorizontalScrollView>
 
