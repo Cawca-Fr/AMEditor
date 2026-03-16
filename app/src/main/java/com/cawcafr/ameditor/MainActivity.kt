@@ -4,6 +4,7 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentName
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
@@ -22,6 +23,8 @@ import android.widget.*
 import android.content.Intent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.IntentCompat
+import androidx.core.content.IntentSanitizer
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.cawcafr.ameditor.util.SignerUtils
@@ -187,7 +190,9 @@ class MainActivity : AppCompatActivity() {
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
         if (result.resultCode == Activity.RESULT_OK) {
-            val data = result.data?.getSerializableExtra("PATCH_DATA") as? CustomPatchData
+            val data = result.data?.let { intent ->
+                IntentCompat.getSerializableExtra(intent, "PATCH_DATA", CustomPatchData::class.java)
+            }
             if (data != null) startCustomPatchProcess(data)
         }
     }
@@ -833,16 +838,26 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyLanguage(langCode: String) {
-        val locale = java.util.Locale(langCode)
+        val locale = java.util.Locale.forLanguageTag(langCode)
         java.util.Locale.setDefault(locale)
         val config = android.content.res.Configuration(resources.configuration)
         config.setLocale(locale)
         @Suppress("DEPRECATION")
         resources.updateConfiguration(config, resources.displayMetrics)
+        
         // Redémarre l'activité pour appliquer
-        val intent = intent
+        val restartIntent = Intent(this, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+        }
+        
+        val sanitizedIntent = IntentSanitizer.Builder()
+            .allowComponent(ComponentName(this, MainActivity::class.java))
+            .allowFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            .build()
+            .sanitizeByFiltering(restartIntent)
+
         finish()
-        startActivity(intent)
+        startActivity(sanitizedIntent)
     }
 
     // ── Changelog ─────────────────────────────────────────────────────────────

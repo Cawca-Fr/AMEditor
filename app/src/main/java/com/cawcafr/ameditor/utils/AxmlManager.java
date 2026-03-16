@@ -67,7 +67,7 @@ public class AxmlManager {
         try (FileOutputStream fos = new FileOutputStream(path)) {
             fos.write(content.getBytes(StandardCharsets.UTF_8));
         } catch (IOException e) {
-            e.printStackTrace();
+            Log.e(TAG, "Erreur lors de la sauvegarde du fichier texte", e);
         }
     }
 }
