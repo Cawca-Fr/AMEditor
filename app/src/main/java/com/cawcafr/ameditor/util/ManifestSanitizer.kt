@@ -3,6 +3,7 @@ package com.cawcafr.ameditor.util
 import android.content.Context
 import android.util.Log
 import com.cawcafr.ameditor.R
+import org.lsposed.lsparanoid.Obfuscate
 import org.w3c.dom.Document
 import org.w3c.dom.Element
 import org.w3c.dom.Node
@@ -15,6 +16,7 @@ import javax.xml.transform.TransformerFactory
 import javax.xml.transform.dom.DOMSource
 import javax.xml.transform.stream.StreamResult
 
+@Obfuscate
 object ManifestSanitizer {
 
     private const val TAG = "ManifestSanitizer"

@@ -1,6 +1,7 @@
 plugins {
     id 'com.android.application'
-    // id 'org.jetbrains.kotlin.android'
+    id 'org.lsposed.lsparanoid' version '0.6.0'
+    id 'top.niunaijun.blackobfuscator'
 }
 
 android {
@@ -18,8 +19,8 @@ android {
     compileOptions {
         // Enable desugaring to support apksig
         coreLibraryDesugaringEnabled true
-        sourceCompatibility JavaVersion.VERSION_11
-        targetCompatibility JavaVersion.VERSION_11
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     buildFeatures {
@@ -34,18 +35,48 @@ android {
         }
     }
 
+    // Configuration LSParanoid
     packagingOptions {
         resources.excludes.add('META-INF/services/javax.xml.parsers.SAXParserFactory')
         resources.excludes.add('META-INF/services/javax.xml.parsers.DocumentBuilderFactory')
     }
 }
 
+lsparanoid {
+    seed = 2024
+}
+
+// Force BlackObfuscator to run after R8
+tasks.configureEach { task ->
+    if (task.name.contains('transformClassesAndResourcesWithR8')) {
+        task.finalizedBy 'blackObfuscator'
+    }
+}
+
+BlackObfuscator {
+    enabled true
+    depth 2
+
+    // Only obfuscate personal code — never third-party libs
+    obfClass = [
+            "com.cawcafr.ameditor"
+    ]
+
+    // Exclude Main Activities and classe
+    blackClass = [
+            "com.cawcafr.ameditor.MainActivity",
+            "com.cawcafr.ameditor.XmlPreviewActivity",
+            "com.cawcafr.ameditor.util.CustomPatchActivity"
+    ]
+}
+
 kotlin {
-    jvmToolchain(11)
+    jvmToolchain(17)
 }
 
 dependencies {
     coreLibraryDesugaring libs.desugar.jdk.libs
+    implementation libs.core
     implementation libs.androidx.core.ktx.v1160
     implementation libs.androidx.appcompat
     implementation libs.material
@@ -58,5 +89,4 @@ dependencies {
     implementation libs.log4j
     implementation libs.apksig
     implementation libs.bcprov.jdk18on
-
 }

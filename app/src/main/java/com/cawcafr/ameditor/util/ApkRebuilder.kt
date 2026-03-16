@@ -1,6 +1,7 @@
 package com.cawcafr.ameditor.util
 
 import android.util.Log
+import org.lsposed.lsparanoid.Obfuscate
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -10,6 +11,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipFile
 import java.util.zip.ZipOutputStream
 
+@Obfuscate
 object ApkRebuilder {
 
     private const val TAG            = "ApkRebuilder"

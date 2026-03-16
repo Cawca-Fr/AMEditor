@@ -1,5 +1,8 @@
 package com.cawcafr.ameditor.util
 
+import org.lsposed.lsparanoid.Obfuscate
+
+@Obfuscate
 object TrackersList {
 
     fun isTracker(name: String): Boolean {

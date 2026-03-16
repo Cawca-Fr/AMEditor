@@ -2,6 +2,7 @@ package com.cawcafr.ameditor.util
 
 import android.util.Log
 import com.android.apksig.ApkSigner
+import org.lsposed.lsparanoid.Obfuscate
 import java.io.File
 import java.io.FileInputStream
 import java.security.KeyFactory
@@ -11,6 +12,7 @@ import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import java.security.spec.PKCS8EncodedKeySpec
 
+@Obfuscate
 object SignerUtils {
 
     /**

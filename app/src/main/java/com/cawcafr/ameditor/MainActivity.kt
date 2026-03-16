@@ -4,7 +4,6 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
@@ -40,7 +39,9 @@ import java.util.Date
 import java.util.Locale
 import androidx.core.net.toUri
 import androidx.core.graphics.toColorInt
+import org.lsposed.lsparanoid.Obfuscate
 
+@Obfuscate
 class MainActivity : AppCompatActivity() {
 
     // ── Vues ──────────────────────────────────────────────────────────────────

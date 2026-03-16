@@ -6,13 +6,15 @@ import android.util.Log;
 import com.apk.axml.aXMLDecoder;
 import com.apk.axml.aXMLEncoder;
 
+import org.lsposed.lsparanoid.Obfuscate;
+
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
-
+@Obfuscate
 public class AxmlManager {
 
     private static final String TAG = "AxmlManager";

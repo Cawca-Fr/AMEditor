@@ -7,11 +7,12 @@ import com.apk.axml.aXMLEncoder
 import com.cawcafr.ameditor.util.ApkRebuilder
 import com.cawcafr.ameditor.util.CustomPatchData
 import com.cawcafr.ameditor.util.ManifestSanitizer
+import org.lsposed.lsparanoid.Obfuscate
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.util.zip.ZipFile
-
+@Obfuscate
 class ApkManifestPatcher(private val context: Context) {
 
     private val TAG = "ApkManifestPatcher"

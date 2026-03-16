@@ -26,9 +26,10 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.widget.TextViewCompat
 import com.cawcafr.ameditor.R
 import com.cawcafr.ameditor.XmlContentHolder
+import org.lsposed.lsparanoid.Obfuscate
 import java.util.Stack
 import java.util.regex.Pattern
-
+@Obfuscate
 class CustomPatchActivity : AppCompatActivity() {
 
     private lateinit var xmlTextView: TextView

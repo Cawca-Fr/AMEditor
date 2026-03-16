@@ -30,7 +30,9 @@ import androidx.core.widget.doAfterTextChanged
 import com.cawcafr.ameditor.util.XmlSyntaxHighlighter
 import androidx.core.graphics.toColorInt
 import androidx.core.view.isVisible
+import org.lsposed.lsparanoid.Obfuscate
 
+@Obfuscate
 class XmlPreviewActivity : AppCompatActivity() {
 
     private lateinit var codeTextView: TextView
