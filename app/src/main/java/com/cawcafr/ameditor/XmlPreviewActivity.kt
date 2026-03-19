@@ -72,6 +72,13 @@ class XmlPreviewActivity : AppCompatActivity() {
     /** Au-delà de ce seuil on sépare texte brut et colorisation. ~300KB. */
     private val PLAIN_THRESHOLD = 300_000
 
+    /**
+     * Taille d'un bloc de colorisation (80 KB).
+     * Le fichier est traité par tranches de cette taille afin que la première
+     * zone visible soit colorisée rapidement, sans attendre la fin du fichier.
+     */
+    private val HIGHLIGHT_CHUNK = 80_000
+
     // ── Viewport colorization ─────────────────────────────────────────────────
     private data class SpanInfo(val span: Any, val start: Int, val end: Int, val flags: Int)
 
@@ -172,8 +179,9 @@ class XmlPreviewActivity : AppCompatActivity() {
                 if (isLarge) {
                     // Fichier volumineux :
                     //  a) On pré-calcule le layout pour le TEXTE BRUT → affiché immédiatement
-                    //  b) On calcule les spans de couleur séparément
-                    //  c) La colorisation s'applique progressivement au scroll
+                    //  b) Les spans de couleur sont calculés par tranches (HIGHLIGHT_CHUNK) :
+                    //     chaque tranche est fusionnée dans allSpanInfos dès qu'elle est prête,
+                    //     ce qui permet de coloriser la zone visible sans attendre la fin.
 
                     // a) Texte brut pré-calculé
                     val plainSpannable = SpannableString(xmlContent)
@@ -186,11 +194,35 @@ class XmlPreviewActivity : AppCompatActivity() {
                         xmlScrollView.post { updateViewportSpans() }
                     }
 
-                    // b) Calcul des spans de couleur en background (l'utilisateur scroll déjà)
-                    val spans = computeAllSpanInfos(xmlContent)
-                    runOnUiThread {
-                        allSpanInfos = spans
-                        updateViewportSpans()   // colorise la zone déjà visible
+                    // b) Calcul des spans par tranches — mise à jour progressive de allSpanInfos
+                    val len       = xmlContent.length
+                    val numChunks = (len + HIGHLIGHT_CHUNK - 1) / HIGHLIGHT_CHUNK
+                    // Use a mutable list to avoid O(n²) concatenation across chunks.
+                    val accumulated = ArrayList<SpanInfo>()
+
+                    for (chunkIdx in 0 until numChunks) {
+                        val from = chunkIdx * HIGHLIGHT_CHUNK
+                        val to   = minOf(from + HIGHLIGHT_CHUNK, len)
+
+                        // computeSpans ne traite qu'une sous-chaîne, réduisant la pression
+                        // mémoire et le temps CPU par rapport à un highlight() complet.
+                        val chunkSpans = XmlSyntaxHighlighter.computeSpans(xmlContent, from, to)
+                            .map { (s, e, c) ->
+                                SpanInfo(android.text.style.ForegroundColorSpan(c), s, e,
+                                    android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                            }
+
+                        // Les tranches sont traitées dans l'ordre croissant, donc la
+                        // liste reste triée par start après chaque addAll().
+                        accumulated.addAll(chunkSpans)
+
+                        // Snapshot immuable transmis au main thread — le background peut
+                        // continuer à modifier accumulated sans risque.
+                        val snapshot: List<SpanInfo> = accumulated.toList()
+                        runOnUiThread {
+                            allSpanInfos = snapshot
+                            updateViewportSpans()   // colorise la zone déjà visible
+                        }
                     }
 
                 } else {
@@ -216,15 +248,6 @@ class XmlPreviewActivity : AppCompatActivity() {
     // ════════════════════════════════════════════════════════════════════════
     // Viewport colorization
     // ════════════════════════════════════════════════════════════════════════
-
-    private fun computeAllSpanInfos(source: String): List<SpanInfo> {
-        val highlighted = XmlSyntaxHighlighter.highlight(source)
-        val computed    = SpannableString.valueOf(highlighted)
-        return computed.getSpans(0, computed.length, Any::class.java)
-            .map    { SpanInfo(it, computed.getSpanStart(it), computed.getSpanEnd(it), computed.getSpanFlags(it)) }
-            .filter { it.start >= 0 && it.end > it.start }
-            .sortedBy { it.start }
-    }
 
     private fun updateViewportSpans() {
         if (allSpanInfos.isEmpty()) return
