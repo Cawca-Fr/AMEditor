@@ -69,7 +69,12 @@ class CustomPatchActivity : AppCompatActivity() {
     private val viewportHandler  = Handler(Looper.getMainLooper())
     private var viewportRunnable: Runnable? = null
 
-    private val PLAIN_THRESHOLD = 300_000
+    /**
+     * Taille d'un bloc de colorisation (80 KB).
+     * Traiter le fichier par tranches permet de mettre à jour la zone visible
+     * rapidement sans attendre la fin du fichier entier.
+     */
+    private val HIGHLIGHT_CHUNK  = 80_000
 
     companion object {
         private const val TAG      = "CustomPatchActivity"
@@ -150,9 +155,6 @@ class CustomPatchActivity : AppCompatActivity() {
             .setCancelable(false)
             .create().also { it.show() }
 
-        val isLarge = xmlContent.length > PLAIN_THRESHOLD
-
-        // Params de mesure du TextView — DOIT être sur le main thread
         val params = TextViewCompat.getTextMetricsParams(xmlTextView)
 
         Thread {
@@ -173,11 +175,31 @@ class CustomPatchActivity : AppCompatActivity() {
                     xmlScrollView.post { updateViewportSpans() }
                 }
 
-                // c. Calcul des spans de couleur en parallèle (l'utilisateur peut déjà naviguer)
-                val spans = computeAllSpanInfos(xmlContent)
-                runOnUiThread {
-                    allSpanInfos = spans
-                    updateViewportSpans()
+                // c. Calcul des spans de couleur par tranches — mise à jour progressive
+                val len       = xmlContent.length
+                val numChunks = (len + HIGHLIGHT_CHUNK - 1) / HIGHLIGHT_CHUNK
+                // Use a mutable list to avoid O(n²) concatenation across chunks.
+                val accumulated = ArrayList<SpanInfo>()
+
+                for (chunkIdx in 0 until numChunks) {
+                    val from = chunkIdx * HIGHLIGHT_CHUNK
+                    val to   = minOf(from + HIGHLIGHT_CHUNK, len)
+
+                    val chunkSpans = XmlSyntaxHighlighter.computeSpans(xmlContent, from, to)
+                        .map { (s, e, c) ->
+                            SpanInfo(android.text.style.ForegroundColorSpan(c), s, e,
+                                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        }
+
+                    // Chunks are processed in ascending order so the list stays sorted.
+                    accumulated.addAll(chunkSpans)
+
+                    // Immutable snapshot for the main thread.
+                    val snapshot: List<SpanInfo> = accumulated.toList()
+                    runOnUiThread {
+                        allSpanInfos = snapshot
+                        updateViewportSpans()
+                    }
                 }
 
             } catch (e: Exception) {
@@ -194,15 +216,6 @@ class CustomPatchActivity : AppCompatActivity() {
     // ════════════════════════════════════════════════════════════════════════
     // Viewport colorization
     // ════════════════════════════════════════════════════════════════════════
-
-    private fun computeAllSpanInfos(source: String): List<SpanInfo> {
-        val highlighted = XmlSyntaxHighlighter.highlight(source)
-        val computed    = SpannableString.valueOf(highlighted)
-        return computed.getSpans(0, computed.length, Any::class.java)
-            .map    { SpanInfo(it, computed.getSpanStart(it), computed.getSpanEnd(it), computed.getSpanFlags(it)) }
-            .filter { it.start >= 0 && it.end > it.start }
-            .sortedBy { it.start }
-    }
 
     private fun updateViewportSpans() {
         if (allSpanInfos.isEmpty()) return
@@ -379,7 +392,7 @@ class CustomPatchActivity : AppCompatActivity() {
         val allSet    = same.all { nodeStates[it.index] == currentMode }
         val modeLabel = if (currentMode == Mode.DELETE) getString(R.string.mode_delete) else getString(R.string.mode_deactivate)
         val msg = if (allSet) getString(R.string.dialog_bulk_deselect_msg, same.size, tagName)
-                  else getString(R.string.dialog_bulk_select_msg, modeLabel, same.size, tagName)
+        else getString(R.string.dialog_bulk_select_msg, modeLabel, same.size, tagName)
 
         AlertDialog.Builder(this).setTitle(getString(R.string.dialog_bulk_select_title, tagName))
             .setMessage(msg)
