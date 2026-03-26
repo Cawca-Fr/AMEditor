@@ -10,6 +10,7 @@ import android.os.Looper
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.style.BackgroundColorSpan
+import android.text.style.ForegroundColorSpan
 import android.util.Log
 import android.view.GestureDetector
 import android.view.Menu
@@ -29,6 +30,7 @@ import com.cawcafr.ameditor.XmlContentHolder
 import org.lsposed.lsparanoid.Obfuscate
 import java.util.Stack
 import java.util.regex.Pattern
+
 @Obfuscate
 class CustomPatchActivity : AppCompatActivity() {
 
@@ -36,6 +38,7 @@ class CustomPatchActivity : AppCompatActivity() {
     private lateinit var btnDelete: com.google.android.material.button.MaterialButton
     private lateinit var btnDeactivate: com.google.android.material.button.MaterialButton
     private lateinit var xmlScrollView: androidx.core.widget.NestedScrollView
+    private lateinit var xmlHorizontalScroll: android.widget.HorizontalScrollView
     private lateinit var scrollbarThumb: android.view.View
 
     private var minThumbPx   = 0
@@ -60,21 +63,18 @@ class CustomPatchActivity : AppCompatActivity() {
     private var loadingDialog: AlertDialog? = null
 
     // ── Viewport colorization ─────────────────────────────────────────────────
-    private data class SpanInfo(val span: Any, val start: Int, val end: Int, val flags: Int)
+    // Same architecture as XmlPreviewActivity: chunked background loading +
+    // micro-batched span application via ViewportSpanApplier.
 
-    private var allSpanInfos: List<SpanInfo> = emptyList()
+    @Volatile private var allSpanInfos: List<SpanRecord> = emptyList()
     private val appliedHighlightSpans = mutableMapOf<Int, Any>()
+    private val spanApplier           = ViewportSpanApplier()
+
+    private val HIGHLIGHT_CHUNK = 80_000
     private val VIEWPORT_BUFFER = 60_000
     private val VIEWPORT_EVICT  = VIEWPORT_BUFFER * 2
     private val viewportHandler  = Handler(Looper.getMainLooper())
     private var viewportRunnable: Runnable? = null
-
-    /**
-     * Taille d'un bloc de colorisation (80 KB).
-     * Traiter le fichier par tranches permet de mettre à jour la zone visible
-     * rapidement sans attendre la fin du fichier entier.
-     */
-    private val HIGHLIGHT_CHUNK  = 80_000
 
     companion object {
         private const val TAG      = "CustomPatchActivity"
@@ -110,13 +110,15 @@ class CustomPatchActivity : AppCompatActivity() {
 
         xmlContent = XmlContentHolder.get() ?: intent.getStringExtra("XML_CONTENT") ?: ""
         if (xmlContent.isEmpty()) {
-            Toast.makeText(this, getString(R.string.error_no_xml_received), Toast.LENGTH_LONG).show(); finish(); return
+            Toast.makeText(this, getString(R.string.error_no_xml_received), Toast.LENGTH_LONG).show()
+            finish(); return
         }
         startRender()
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        spanApplier.cancel()
         viewportHandler.removeCallbacksAndMessages(null)
         fadeHandler.removeCallbacksAndMessages(null)
         loadingDialog?.dismiss(); loadingDialog = null
@@ -134,91 +136,115 @@ class CustomPatchActivity : AppCompatActivity() {
     }
 
     private fun setupViews() {
-        xmlTextView    = findViewById(R.id.xmlTextView)
+        xmlTextView         = findViewById(R.id.xmlTextView)
         xmlTextView.highlightColor = android.graphics.Color.TRANSPARENT
-        btnDelete      = findViewById(R.id.btnModeDelete)
-        btnDeactivate  = findViewById(R.id.btnModeDeactivate)
-        xmlScrollView  = findViewById(R.id.xmlScrollView)
-        scrollbarThumb = findViewById(R.id.scrollbarThumb)
+        btnDelete           = findViewById(R.id.btnModeDelete)
+        btnDeactivate       = findViewById(R.id.btnModeDeactivate)
+        xmlScrollView       = findViewById(R.id.xmlScrollView)
+        xmlHorizontalScroll = findViewById(R.id.xmlHorizontalScroll)
+        scrollbarThumb      = findViewById(R.id.scrollbarThumb)
         minThumbPx     = (56 * resources.displayMetrics.density).toInt()
         setupCustomScrollbar(); refreshButtonLabels()
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Rendu — PrecomputedTextCompat + viewport colorization
+    // Render
+    //
+    // POURQUOI LE FREEZE DANS CustomPatchActivity (mais pas XmlPreviewActivity) :
+    //
+    // CustomPatchActivity affiche un loading dialog pendant parseNodes().
+    // Quand le dialog se ferme, le thread background enchaîne immédiatement
+    // 25 runOnUiThread { allSpanInfos = …; updateViewportSpans() } en rafale
+    // (un par chunk de 80KB sur un XML de 2MB).
+    //
+    // Chaque updateViewportSpans() applique 60 spans synchrones + layout pass.
+    // L'utilisateur voit le dialog se fermer et essaie de scroller, mais le
+    // main thread est saturé par 25 × (60 setSpan + layout) = 1500 setSpan.
+    //
+    // FIX : dans le chunk loop, seul allSpanInfos est mis à jour (pure
+    // assignment, 0 layout work). Les viewport updates viennent UNIQUEMENT de :
+    //   1. xmlScrollView.post { updateViewportSpans() } juste après setText
+    //      → colorise la zone visible initiale
+    //   2. Le scroll listener (debounce 100ms après chaque arrêt)
+    //   3. Un seul post final quand tous les chunks sont prêts
+    //      → colorise si l'utilisateur n'a pas encore scrollé
     // ════════════════════════════════════════════════════════════════════════
 
     private fun startRender() {
-        // Dialog de chargement (pendant le parsing, nécessaire pour les taps)
         loadingDialog = AlertDialog.Builder(this)
             .setView(layoutInflater.inflate(R.layout.dialog_importing, null))
             .setCancelable(false)
             .create().also { it.show() }
 
-        val params = TextViewCompat.getTextMetricsParams(xmlTextView)
+        val params = TextViewCompat.getTextMetricsParams(xmlTextView)   // main thread only
 
         Thread {
             try {
-                // a. Parse nodes (toujours depuis le texte brut)
+                // Step 1 — parse XML nodes for tap detection
                 parseNodes(xmlContent)
                 displayedText = xmlContent
 
-                // b. Pré-calcul du layout du texte brut
-                val plainSpannable = SpannableString(xmlContent)
-                val precomputed    = PrecomputedTextCompat.create(plainSpannable, params)
-
+                // Step 2 — plain text layout (instantaneous setText on main thread)
+                val precomputed = PrecomputedTextCompat.create(SpannableString(xmlContent), params)
                 runOnUiThread {
-                    // setText INSTANTANÉ — main thread ne fait aucun calcul
                     TextViewCompat.setPrecomputedText(xmlTextView, precomputed)
                     isParsed = true
                     loadingDialog?.dismiss(); loadingDialog = null
+                    // Post ONE initial viewport update — colorises the visible area on open.
+                    // No further viewport updates are posted from the chunk loop.
                     xmlScrollView.post { updateViewportSpans() }
                 }
 
-                // c. Calcul des spans de couleur par tranches — mise à jour progressive
-                val len       = xmlContent.length
-                val numChunks = (len + HIGHLIGHT_CHUNK - 1) / HIGHLIGHT_CHUNK
-                // Use a mutable list to avoid O(n²) concatenation across chunks.
-                val accumulated = ArrayList<SpanInfo>()
+                // Step 3 — 80 KB chunks: update allSpanInfos ONLY, no layout work.
+                // The scroll listener drives viewport updates as the user navigates.
+                val len         = xmlContent.length
+                val numChunks   = (len + HIGHLIGHT_CHUNK - 1) / HIGHLIGHT_CHUNK
+                val accumulated = ArrayList<SpanRecord>()
 
                 for (chunkIdx in 0 until numChunks) {
                     val from = chunkIdx * HIGHLIGHT_CHUNK
                     val to   = minOf(from + HIGHLIGHT_CHUNK, len)
 
-                    val chunkSpans = XmlSyntaxHighlighter.computeSpans(xmlContent, from, to)
-                        .map { (s, e, c) ->
-                            SpanInfo(android.text.style.ForegroundColorSpan(c), s, e,
-                                Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                        }
+                    accumulated.addAll(
+                        XmlSyntaxHighlighter.computeSpans(xmlContent, from, to)
+                            .map { (s, e, c) ->
+                                SpanRecord(ForegroundColorSpan(c), s, e,
+                                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                            }
+                    )
 
-                    // Chunks are processed in ascending order so the list stays sorted.
-                    accumulated.addAll(chunkSpans)
-
-                    // Immutable snapshot for the main thread.
-                    val snapshot: List<SpanInfo> = accumulated.toList()
-                    runOnUiThread {
-                        allSpanInfos = snapshot
-                        updateViewportSpans()
-                    }
+                    // Pure pointer assignment — zero layout work on main thread.
+                    val snapshot: List<SpanRecord> = accumulated.toList()
+                    runOnUiThread { allSpanInfos = snapshot }
                 }
+
+                // Step 4 — all spans are now ready: one final viewport update.
+                // This covers the case where the user hasn't scrolled yet but
+                // new spans outside the initial viewport are now available.
+                runOnUiThread { updateViewportSpans() }
 
             } catch (e: Exception) {
                 Log.e(TAG, "startRender error", e)
                 runOnUiThread {
                     isParsed = true
                     loadingDialog?.dismiss(); loadingDialog = null
-                    Toast.makeText(this, getString(R.string.generic_error_exception, e.message), Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, getString(R.string.generic_error_exception, e.message),
+                        Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Viewport colorization
+    // Viewport colorization — BATCHED
+    // See XmlPreviewActivity for full architectural notes.
     // ════════════════════════════════════════════════════════════════════════
 
     private fun updateViewportSpans() {
-        if (allSpanInfos.isEmpty()) return
+        spanApplier.cancel()
+
+        val snapshot = allSpanInfos
+        if (snapshot.isEmpty()) return
         val target = xmlTextView.text as? Spannable ?: return
         val layout = xmlTextView.layout              ?: return
 
@@ -233,30 +259,23 @@ class CustomPatchActivity : AppCompatActivity() {
         val evictStart = (charStart - VIEWPORT_EVICT).coerceAtLeast(0)
         val evictEnd   = (charEnd   + VIEWPORT_EVICT).coerceAtMost(target.length)
 
-        // Supprime les spans trop loin
-        val toRemove = appliedHighlightSpans.keys.filter { i ->
-            val info = allSpanInfos[i]; info.end < evictStart || info.start > evictEnd
-        }
-        toRemove.forEach { i ->
-            try { target.removeSpan(appliedHighlightSpans[i]!!) } catch (_: Exception) {}
-            appliedHighlightSpans.remove(i)
-        }
+        spanApplier.evictSpans(target, snapshot, appliedHighlightSpans, evictStart, evictEnd)
 
-        // Binary search : premier span dans la zone buffered
-        var lo = 0; var hi = allSpanInfos.size - 1; var first = allSpanInfos.size
+        var lo = 0; var hi = snapshot.size - 1; var first = snapshot.size
         while (lo <= hi) {
             val mid = (lo + hi) ushr 1
-            if (allSpanInfos[mid].start >= buffStart) { first = mid; hi = mid - 1 } else lo = mid + 1
+            if (snapshot[mid].start >= buffStart) { first = mid; hi = mid - 1 } else lo = mid + 1
         }
 
+        val toApply = ArrayList<Int>()
         val len = target.length
-        for (i in first until allSpanInfos.size) {
-            val info = allSpanInfos[i]
+        for (i in first until snapshot.size) {
+            val info = snapshot[i]
             if (info.start > buffEnd) break
-            if (appliedHighlightSpans.containsKey(i) || info.end > len) continue
-            try { target.setSpan(info.span, info.start, info.end, info.flags); appliedHighlightSpans[i] = info.span }
-            catch (_: Exception) {}
+            if (!appliedHighlightSpans.containsKey(i) && info.end <= len) toApply.add(i)
         }
+
+        spanApplier.startBatch(target, snapshot, appliedHighlightSpans, toApply)
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -270,11 +289,32 @@ class CustomPatchActivity : AppCompatActivity() {
         xmlScrollView.setOnScrollChangeListener(
             androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
                 updateThumbPosition(scrollY); showThumb(); scheduleFade()
+                // Cancel stale batch on new scroll, then debounce 100 ms
+                spanApplier.cancel()
                 viewportRunnable?.let { viewportHandler.removeCallbacks(it) }
                 val r = Runnable { updateViewportSpans() }.also { viewportRunnable = it }
                 viewportHandler.postDelayed(r, 100)
             }
         )
+
+        // ── Horizontal scroll ──────────────────────────────────────────────
+        // HorizontalScrollView has no scroll change listener pre-API 23.
+        // Touch listener: cancel batch on MOVE, reschedule on UP/CANCEL.
+        xmlHorizontalScroll.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    spanApplier.cancel()
+                    viewportRunnable?.let { viewportHandler.removeCallbacks(it) }
+                }
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> {
+                    viewportRunnable?.let { viewportHandler.removeCallbacks(it) }
+                    val r = Runnable { updateViewportSpans() }.also { viewportRunnable = it }
+                    viewportHandler.postDelayed(r, 100)
+                }
+            }
+            false   // don't consume — let HorizontalScrollView handle fling/scroll
+        }
 
         scrollbarThumb.setOnTouchListener { v, event ->
             when (event.actionMasked) {
@@ -291,12 +331,18 @@ class CustomPatchActivity : AppCompatActivity() {
                     val delta  = ((event.rawY - dragStartRawY) / tRange * range).toInt()
                     xmlScrollView.scrollTo(0, (dragStartScrollY + delta).coerceIn(0, range)); true
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { setThumbColor("#66AAAAAA"); scheduleFade(); true }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    setThumbColor("#66AAAAAA"); scheduleFade(); true
+                }
                 else -> false
             }
         }
 
-        xmlScrollView.post { updateThumbPosition(0); scrollbarThumb.alpha = 0f; scrollbarThumb.visibility = android.view.View.VISIBLE }
+        xmlScrollView.post {
+            updateThumbPosition(0)
+            scrollbarThumb.alpha = 0f
+            scrollbarThumb.visibility = android.view.View.VISIBLE
+        }
     }
 
     private fun setThumbColor(hex: String) {
@@ -317,7 +363,9 @@ class CustomPatchActivity : AppCompatActivity() {
         val thumbH = (vis.toFloat() / total * track).toInt().coerceAtLeast(minThumbPx)
         val ratio  = scrollY.toFloat() / (total - vis)
         val top    = (ratio * (track - thumbH) + 4).toInt().coerceIn(4, track - thumbH + 4)
-        if (scrollbarThumb.height != thumbH) { val lp = scrollbarThumb.layoutParams; lp.height = thumbH; scrollbarThumb.layoutParams = lp }
+        if (scrollbarThumb.height != thumbH) {
+            val lp = scrollbarThumb.layoutParams; lp.height = thumbH; scrollbarThumb.layoutParams = lp
+        }
         scrollbarThumb.translationY = top.toFloat()
     }
 
@@ -369,7 +417,10 @@ class CustomPatchActivity : AppCompatActivity() {
             .mapNotNull { k -> allNodes.find { it.index == k } }.toSet()
         nodeStates.clear(); nodeStates.putAll(snap); updateVisuals(changed); refreshButtonLabels()
     }
-    private fun updateUndoRedoMenuItems() { undoMenuItem?.isEnabled = undoStack.isNotEmpty(); redoMenuItem?.isEnabled = redoStack.isNotEmpty() }
+    private fun updateUndoRedoMenuItems() {
+        undoMenuItem?.isEnabled = undoStack.isNotEmpty()
+        redoMenuItem?.isEnabled = redoStack.isNotEmpty()
+    }
 
     // ════════════════════════════════════════════════════════════════════════
     // Reset / Bulk select
@@ -393,7 +444,6 @@ class CustomPatchActivity : AppCompatActivity() {
         val modeLabel = if (currentMode == Mode.DELETE) getString(R.string.mode_delete) else getString(R.string.mode_deactivate)
         val msg = if (allSet) getString(R.string.dialog_bulk_deselect_msg, same.size, tagName)
         else getString(R.string.dialog_bulk_select_msg, modeLabel, same.size, tagName)
-
         AlertDialog.Builder(this).setTitle(getString(R.string.dialog_bulk_select_title, tagName))
             .setMessage(msg)
             .setPositiveButton(if (allSet) getString(R.string.btn_deselect_all) else getString(R.string.btn_select_all)) { _, _ ->
@@ -402,9 +452,9 @@ class CustomPatchActivity : AppCompatActivity() {
                 same.forEach { applyModeToNodeAndChildren(it, mode, changed) }
                 updateVisuals(changed); refreshButtonLabels()
                 val resLabel = when(mode) {
-                    Mode.DELETE -> getString(R.string.toast_marked_deletion)
+                    Mode.DELETE     -> getString(R.string.toast_marked_deletion)
                     Mode.DEACTIVATE -> getString(R.string.toast_marked_deactivation)
-                    else -> getString(R.string.toast_deselected)
+                    else            -> getString(R.string.toast_deselected)
                 }
                 Toast.makeText(this, getString(R.string.toast_bulk_result, resLabel, same.size, tagName), Toast.LENGTH_SHORT).show()
             }.setNegativeButton(getString(R.string.btn_cancel), null).show()
@@ -432,9 +482,17 @@ class CustomPatchActivity : AppCompatActivity() {
         })
         xmlTextView.setOnTouchListener { v, event ->
             when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN         -> v.parent?.requestDisallowInterceptTouchEvent(true)
+                MotionEvent.ACTION_DOWN -> {
+                    // Cancel any pending span batch immediately.
+                    // Without this, ongoing setSpan() calls accumulate dirty flags;
+                    // handleTap() → updateVisuals() → setSpan() then forces a full
+                    // makeNewLayout() over all existing spans → freeze on large files.
+                    spanApplier.cancel()
+                    viewportRunnable?.let { viewportHandler.removeCallbacks(it) }
+                    v.parent?.requestDisallowInterceptTouchEvent(true)
+                }
                 MotionEvent.ACTION_UP,
-                MotionEvent.ACTION_CANCEL       -> v.parent?.requestDisallowInterceptTouchEvent(false)
+                MotionEvent.ACTION_CANCEL -> v.parent?.requestDisallowInterceptTouchEvent(false)
             }
             gd.onTouchEvent(event); true
         }
@@ -539,7 +597,9 @@ class CustomPatchActivity : AppCompatActivity() {
 
     private fun computeOccurrenceMap(): Map<Int, Int> {
         val c = mutableMapOf<String, Int>(); val r = mutableMapOf<Int, Int>()
-        allNodes.sortedBy { it.index }.forEach { node -> val i = c.getOrDefault(node.tagName, 0); r[node.index] = i; c[node.tagName] = i + 1 }
+        allNodes.sortedBy { it.index }.forEach { node ->
+            val i = c.getOrDefault(node.tagName, 0); r[node.index] = i; c[node.tagName] = i + 1
+        }
         return r
     }
 
@@ -599,14 +659,19 @@ class CustomPatchActivity : AppCompatActivity() {
 
     private fun applyPatch() {
         if (nodeStates.isEmpty()) { Toast.makeText(this, getString(R.string.error_no_elements_selected), Toast.LENGTH_SHORT).show(); return }
-        val targets = mutableListOf<PatchTarget>(); val counters = mutableMapOf<String, Int>()
+        val targets  = mutableListOf<PatchTarget>()
+        val counters = mutableMapOf<String, Int>()
         allNodes.sortedBy { it.index }.forEach { node ->
             val idx = counters.getOrDefault(node.tagName, 0)
-            if (nodeStates.containsKey(node.index)) targets.add(PatchTarget(
-                type = if (nodeStates[node.index] == Mode.DELETE) ActionType.DELETE else ActionType.DISABLE,
-                tagName = node.tagName, androidName = node.androidName,
-                parentName = node.parent?.tagName, occurrenceIndex = idx
-            ))
+            if (nodeStates.containsKey(node.index)) targets.add(
+                PatchTarget(
+                    type            = if (nodeStates[node.index] == Mode.DELETE) ActionType.DELETE else ActionType.DISABLE,
+                    tagName         = node.tagName,
+                    androidName     = node.androidName,
+                    parentName      = node.parent?.tagName,
+                    occurrenceIndex = idx
+                )
+            )
             counters[node.tagName] = idx + 1
         }
         setResult(Activity.RESULT_OK, Intent().also { it.putExtra("PATCH_DATA", CustomPatchData(targets)) })

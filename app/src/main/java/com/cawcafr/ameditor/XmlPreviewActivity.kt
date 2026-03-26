@@ -10,6 +10,7 @@ import android.os.Looper
 import android.text.Spannable
 import android.text.SpannableString
 import android.text.style.BackgroundColorSpan
+import android.text.style.ForegroundColorSpan
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
@@ -21,15 +22,17 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatEditText
+import androidx.core.graphics.toColorInt
 import androidx.core.text.PrecomputedTextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.isVisible
 import androidx.core.widget.NestedScrollView
 import androidx.core.widget.TextViewCompat
 import androidx.core.widget.doAfterTextChanged
+import com.cawcafr.ameditor.util.SpanRecord
+import com.cawcafr.ameditor.util.ViewportSpanApplier
 import com.cawcafr.ameditor.util.XmlSyntaxHighlighter
-import androidx.core.graphics.toColorInt
-import androidx.core.view.isVisible
 import org.lsposed.lsparanoid.Obfuscate
 
 @Obfuscate
@@ -37,6 +40,7 @@ class XmlPreviewActivity : AppCompatActivity() {
 
     private lateinit var codeTextView: TextView
     private lateinit var xmlScrollView: NestedScrollView
+    private lateinit var xmlHorizontalScroll: android.widget.HorizontalScrollView
     private lateinit var scrollbarThumb: View
     private lateinit var searchBar: View
     private lateinit var searchDivider: View
@@ -48,52 +52,29 @@ class XmlPreviewActivity : AppCompatActivity() {
 
     private var xmlContent = ""
 
-    // ══════════════════════════════════════════════════════════════════════════
-    // ARCHITECTURE — FIX ANR DÉFINITIF
-    //
-    // CAUSE RACINE : TextView.setText(2MB) appelle StaticLayout qui calcule
-    // les sauts de ligne pour ~50 000 lignes de façon synchrone sur le main
-    // thread → bloque 10+ secondes → ANR.
-    //
-    // SOLUTION : PrecomputedTextCompat
-    //   1. getTextMetricsParams()  → main thread  (lit les attributs du TextView)
-    //   2. highlight()             → background   (calcule les spans de couleur)
-    //   3. PrecomputedTextCompat.create() → background  (calcule les line breaks)
-    //   4. TextViewCompat.setPrecomputedText() → main thread  (~instantané)
-    //
-    // VIEWPORT COLORIZATION (optionnel, pour les très gros fichiers) :
-    //   Si le fichier est > PLAIN_THRESHOLD, on affiche d'abord le texte
-    //   plain (sans couleurs) via PrecomputedTextCompat, puis on applique
-    //   les spans de couleur progressivement au scroll — seulement la zone visible.
-    //   Cela permet à l'utilisateur de scroller et toucher librement pendant
-    //   que la colorisation s'effectue en arrière-plan.
-    // ══════════════════════════════════════════════════════════════════════════
-
-    /** Au-delà de ce seuil on sépare texte brut et colorisation. ~300KB. */
-    private val PLAIN_THRESHOLD = 300_000
-
-    /**
-     * Taille d'un bloc de colorisation (80 KB).
-     * Le fichier est traité par tranches de cette taille afin que la première
-     * zone visible soit colorisée rapidement, sans attendre la fin du fichier.
-     */
-    private val HIGHLIGHT_CHUNK = 80_000
-
     // ── Viewport colorization ─────────────────────────────────────────────────
-    private data class SpanInfo(val span: Any, val start: Int, val end: Int, val flags: Int)
+    //
+    // allSpanInfos  – all computed spans, sorted by start (background produces
+    //                 chunks in order, so each addAll() keeps the list sorted).
+    // appliedSpans  – index-in-allSpanInfos → span object currently set on the
+    //                 Spannable.  Lets us evict and re-apply efficiently.
+    // spanApplier   – micro-batch applier: 60 spans per Handler.post() frame so
+    //                 the main thread is never blocked for more than ~1 ms at a
+    //                 time → scrolling remains fluid even after stopping.
 
-    /** Tous les spans calculés, triés par start (binary search). */
-    private var allSpanInfos: List<SpanInfo> = emptyList()
-    /** Index → span actuellement posé sur le Spannable. */
-    private val appliedSpans  = mutableMapOf<Int, Any>()
-    /** ~50 écrans d'avance de chaque côté de la zone visible. */
+    @Volatile private var allSpanInfos: List<SpanRecord> = emptyList()
+    private val appliedSpans = mutableMapOf<Int, Any>()
+    private val spanApplier  = ViewportSpanApplier()
+
+    private val PLAIN_THRESHOLD = 300_000
+    private val HIGHLIGHT_CHUNK = 80_000
     private val VIEWPORT_BUFFER = 60_000
     private val VIEWPORT_EVICT  = VIEWPORT_BUFFER * 2
 
     private val viewportHandler  = Handler(Looper.getMainLooper())
     private var viewportRunnable: Runnable? = null
 
-    // ── Recherche ─────────────────────────────────────────────────────────────
+    // ── Search ────────────────────────────────────────────────────────────────
     private val searchResults    = mutableListOf<Int>()
     private var currentResult    = -1
     private var lastQuery        = ""
@@ -118,10 +99,7 @@ class XmlPreviewActivity : AppCompatActivity() {
         WindowCompat.setDecorFitsSystemWindows(window, false)
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
         setContentView(R.layout.activity_xml_preview)
-        setupToolbar()
-        setupViews()
-        setupScrollbar()
-        setupSearch()
+        setupToolbar(); setupViews(); setupScrollbar(); setupSearch()
 
         xmlContent = XmlContentHolder.get() ?: intent.getStringExtra("XML_CONTENT") ?: ""
         if (xmlContent.isEmpty()) { codeTextView.text = getString(R.string.error_no_content); return }
@@ -131,6 +109,7 @@ class XmlPreviewActivity : AppCompatActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        spanApplier.cancel()
         viewportHandler.removeCallbacksAndMessages(null)
         fadeHandler.removeCallbacksAndMessages(null)
     }
@@ -147,113 +126,118 @@ class XmlPreviewActivity : AppCompatActivity() {
     }
 
     private fun setupViews() {
-        codeTextView   = findViewById(R.id.codeTextView)
-        xmlScrollView  = findViewById(R.id.xmlScrollView)
-        scrollbarThumb = findViewById(R.id.scrollbarThumb)
-        searchBar      = findViewById(R.id.searchBar)
-        searchDivider  = findViewById(R.id.searchDivider)
-        etSearch       = findViewById(R.id.etSearch)
-        tvSearchCount  = findViewById(R.id.tvSearchCount)
-        btnSearchPrev  = findViewById(R.id.btnSearchPrev)
-        btnSearchNext  = findViewById(R.id.btnSearchNext)
-        btnSearchClose = findViewById(R.id.btnSearchClose)
-        minThumbPx     = (56 * resources.displayMetrics.density).toInt()
+        codeTextView        = findViewById(R.id.codeTextView)
+        xmlScrollView       = findViewById(R.id.xmlScrollView)
+        xmlHorizontalScroll = findViewById(R.id.xmlHorizontalScroll)
+        scrollbarThumb      = findViewById(R.id.scrollbarThumb)
+        searchBar           = findViewById(R.id.searchBar)
+        searchDivider       = findViewById(R.id.searchDivider)
+        etSearch            = findViewById(R.id.etSearch)
+        tvSearchCount       = findViewById(R.id.tvSearchCount)
+        btnSearchPrev       = findViewById(R.id.btnSearchPrev)
+        btnSearchNext       = findViewById(R.id.btnSearchNext)
+        btnSearchClose      = findViewById(R.id.btnSearchClose)
+        minThumbPx          = (56 * resources.displayMetrics.density).toInt()
         searchBar.visibility     = View.GONE
         searchDivider.visibility = View.GONE
+
+        // Cancel any in-progress span batch the instant the user touches the
+        // text view. Without this, setSpan() calls from the batch accumulate
+        // dirty flags on the TextView; when Android then calls makeNewLayout()
+        // to position the cursor/selection it has to iterate all spans → freeze.
+        codeTextView.setOnTouchListener { v, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                spanApplier.cancel()
+                viewportRunnable?.let { viewportHandler.removeCallbacks(it) }
+            }
+            v.onTouchEvent(event)   // let TextView handle selection normally
+        }
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Rendu — PrecomputedTextCompat
+    // Render
     // ════════════════════════════════════════════════════════════════════════
 
     private fun startRender() {
+        val params  = TextViewCompat.getTextMetricsParams(codeTextView)   // main thread only
         val isLarge = xmlContent.length > PLAIN_THRESHOLD
 
-        // ── Étape 1 (main thread) : récupérer les params de mesure du TextView.
-        // getTextMetricsParams() DOIT être appelé sur le main thread.
-        val params = TextViewCompat.getTextMetricsParams(codeTextView)
-
-        // ── Étape 2 (background) : tout le travail lourd hors main thread.
         Thread {
             try {
                 if (isLarge) {
-                    // Fichier volumineux :
-                    //  a) On pré-calcule le layout pour le TEXTE BRUT → affiché immédiatement
-                    //  b) Les spans de couleur sont calculés par tranches (HIGHLIGHT_CHUNK) :
-                    //     chaque tranche est fusionnée dans allSpanInfos dès qu'elle est prête,
-                    //     ce qui permet de coloriser la zone visible sans attendre la fin.
-
-                    // a) Texte brut pré-calculé
-                    val plainSpannable = SpannableString(xmlContent)
-                    val precomputed    = PrecomputedTextCompat.create(plainSpannable, params)
-
+                    // Step 1 — plain text: user sees content immediately, 0 spans
+                    val precomputed = PrecomputedTextCompat.create(SpannableString(xmlContent), params)
                     runOnUiThread {
-                        // INSTANTANÉ — le layout est déjà calculé, main thread ne fait rien
                         TextViewCompat.setPrecomputedText(codeTextView, precomputed)
-                        // Viewport handler prêt — colorisation au premier scroll
                         xmlScrollView.post { updateViewportSpans() }
                     }
 
-                    // b) Calcul des spans par tranches — mise à jour progressive de allSpanInfos
-                    val len       = xmlContent.length
-                    val numChunks = (len + HIGHLIGHT_CHUNK - 1) / HIGHLIGHT_CHUNK
-                    // Use a mutable list to avoid O(n²) concatenation across chunks.
-                    val accumulated = ArrayList<SpanInfo>()
+                    // Step 2 — 80 KB chunks: colour fills in progressively
+                    val len         = xmlContent.length
+                    val numChunks   = (len + HIGHLIGHT_CHUNK - 1) / HIGHLIGHT_CHUNK
+                    val accumulated = ArrayList<SpanRecord>()
 
                     for (chunkIdx in 0 until numChunks) {
                         val from = chunkIdx * HIGHLIGHT_CHUNK
                         val to   = minOf(from + HIGHLIGHT_CHUNK, len)
 
-                        // computeSpans ne traite qu'une sous-chaîne, réduisant la pression
-                        // mémoire et le temps CPU par rapport à un highlight() complet.
-                        val chunkSpans = XmlSyntaxHighlighter.computeSpans(xmlContent, from, to)
-                            .map { (s, e, c) ->
-                                SpanInfo(android.text.style.ForegroundColorSpan(c), s, e,
-                                    android.text.Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
-                            }
+                        accumulated.addAll(
+                            XmlSyntaxHighlighter.computeSpans(xmlContent, from, to)
+                                .map { (s, e, c) ->
+                                    SpanRecord(ForegroundColorSpan(c), s, e,
+                                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                                }
+                        )
 
-                        // Les tranches sont traitées dans l'ordre croissant, donc la
-                        // liste reste triée par start après chaque addAll().
-                        accumulated.addAll(chunkSpans)
-
-                        // Snapshot immuable transmis au main thread — le background peut
-                        // continuer à modifier accumulated sans risque.
-                        val snapshot: List<SpanInfo> = accumulated.toList()
+                        val snapshot: List<SpanRecord> = accumulated.toList()
                         runOnUiThread {
                             allSpanInfos = snapshot
-                            updateViewportSpans()   // colorise la zone déjà visible
+                            updateViewportSpans()
                         }
                     }
-
                 } else {
-                    // Fichier petit : highlight complet + PrecomputedTextCompat
+                    // Small file — full highlight + PrecomputedTextCompat
                     val highlighted = XmlSyntaxHighlighter.highlight(xmlContent)
-                    val spannable   = SpannableString.valueOf(highlighted)
-                    val precomputed = PrecomputedTextCompat.create(spannable, params)
-
-                    runOnUiThread {
-                        TextViewCompat.setPrecomputedText(codeTextView, precomputed)
-                    }
+                    val precomputed = PrecomputedTextCompat.create(
+                        SpannableString.valueOf(highlighted), params
+                    )
+                    runOnUiThread { TextViewCompat.setPrecomputedText(codeTextView, precomputed) }
                 }
             } catch (e: Exception) {
-                // Fallback : texte brut sans crash
                 val plain = PrecomputedTextCompat.create(SpannableString(xmlContent), params)
-                runOnUiThread {
-                    runCatching { TextViewCompat.setPrecomputedText(codeTextView, plain) }
-                }
+                runOnUiThread { runCatching { TextViewCompat.setPrecomputedText(codeTextView, plain) } }
             }
         }.start()
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Viewport colorization
+    // Viewport colorization — BATCHED
+    //
+    // Called:
+    //   • after each chunk of allSpanInfos is ready (background → main thread)
+    //   • 100 ms after each scroll stop (debounce in setupScrollbar)
+    //
+    // Work on the main thread:
+    //   1. Bounds computation  — O(1), pure arithmetic
+    //   2. Eviction            — O(applied) removeSpan calls, bounded set
+    //   3. Binary search       — O(log n), negligible
+    //   4. Collect toApply     — O(viewport/chunk), small
+    //   5. spanApplier.startBatch() — schedules micro-batches, returns immediately
+    //
+    // The actual setSpan() calls are distributed across future frames by
+    // ViewportSpanApplier, so the main thread is free between batches.
     // ════════════════════════════════════════════════════════════════════════
 
     private fun updateViewportSpans() {
-        if (allSpanInfos.isEmpty()) return
+        // Cancel any in-progress batch for a stale scroll position
+        spanApplier.cancel()
+
+        val snapshot = allSpanInfos          // local ref — immutable list
+        if (snapshot.isEmpty()) return
         val target = codeTextView.text as? Spannable ?: return
         val layout = codeTextView.layout              ?: return
 
+        // 1. Viewport bounds
         val scrollY    = xmlScrollView.scrollY
         val visH       = xmlScrollView.height
         val topLine    = layout.getLineForVertical(scrollY).coerceAtLeast(0)
@@ -265,32 +249,31 @@ class XmlPreviewActivity : AppCompatActivity() {
         val evictStart = (charStart - VIEWPORT_EVICT).coerceAtLeast(0)
         val evictEnd   = (charEnd   + VIEWPORT_EVICT).coerceAtMost(target.length)
 
-        // Supprime les spans trop loin → libère la RAM
-        val toRemove = appliedSpans.keys.filter { i ->
-            val info = allSpanInfos[i]; info.end < evictStart || info.start > evictEnd
-        }
-        toRemove.forEach { i -> try { target.removeSpan(appliedSpans[i]!!) } catch (_: Exception) {}; appliedSpans.remove(i) }
+        // 2. Evict spans far from viewport (immediate, bounded set)
+        spanApplier.evictSpans(target, snapshot, appliedSpans, evictStart, evictEnd)
 
-        // Binary search : premier index dans la zone buffered
-        var lo = 0; var hi = allSpanInfos.size - 1; var first = allSpanInfos.size
+        // 3. Binary search — first index in buffered window
+        var lo = 0; var hi = snapshot.size - 1; var first = snapshot.size
         while (lo <= hi) {
             val mid = (lo + hi) ushr 1
-            if (allSpanInfos[mid].start >= buffStart) { first = mid; hi = mid - 1 } else lo = mid + 1
+            if (snapshot[mid].start >= buffStart) { first = mid; hi = mid - 1 } else lo = mid + 1
         }
 
-        // Applique les spans manquants
+        // 4. Collect indices that need to be applied
+        val toApply = ArrayList<Int>()
         val len = target.length
-        for (i in first until allSpanInfos.size) {
-            val info = allSpanInfos[i]
+        for (i in first until snapshot.size) {
+            val info = snapshot[i]
             if (info.start > buffEnd) break
-            if (appliedSpans.containsKey(i) || info.end > len) continue
-            try { target.setSpan(info.span, info.start, info.end, info.flags); appliedSpans[i] = info.span }
-            catch (_: Exception) {}
+            if (!appliedSpans.containsKey(i) && info.end <= len) toApply.add(i)
         }
+
+        // 5. Schedule micro-batched application — non-blocking
+        spanApplier.startBatch(target, snapshot, appliedSpans, toApply)
     }
 
     // ════════════════════════════════════════════════════════════════════════
-    // Recherche
+    // Search
     // ════════════════════════════════════════════════════════════════════════
 
     private fun setupSearch() {
@@ -335,7 +318,7 @@ class XmlPreviewActivity : AppCompatActivity() {
         tvSearchCount.text = getString(R.string.search_count, currentResult + 1, searchResults.size)
         val spannable = codeTextView.text as? Spannable ?: return
         currentMatchSpan.forEach { spannable.removeSpan(it) }; currentMatchSpan.clear()
-        val pos = searchResults[currentResult]
+        val pos  = searchResults[currentResult]
         val span = BackgroundColorSpan(COLOR_CURRENT_BG)
         spannable.setSpan(span, pos, pos + lastQuery.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
         currentMatchSpan.add(span)
@@ -360,14 +343,16 @@ class XmlPreviewActivity : AppCompatActivity() {
     private fun openSearch() {
         searchBar.visibility = View.VISIBLE; searchDivider.visibility = View.VISIBLE
         etSearch.requestFocus()
-        getSystemService(InputMethodManager::class.java).showSoftInput(etSearch, InputMethodManager.SHOW_IMPLICIT)
+        getSystemService(InputMethodManager::class.java)
+            .showSoftInput(etSearch, InputMethodManager.SHOW_IMPLICIT)
     }
 
     private fun closeSearch() {
         clearSearchSpans(); searchResults.clear(); currentResult = -1; lastQuery = ""
         etSearch.text?.clear(); tvSearchCount.text = ""
         searchBar.visibility = View.GONE; searchDivider.visibility = View.GONE
-        getSystemService(InputMethodManager::class.java).hideSoftInputFromWindow(etSearch.windowToken, 0)
+        getSystemService(InputMethodManager::class.java)
+            .hideSoftInputFromWindow(etSearch.windowToken, 0)
     }
 
     // ════════════════════════════════════════════════════════════════════════
@@ -378,13 +363,35 @@ class XmlPreviewActivity : AppCompatActivity() {
     private fun setupScrollbar() {
         var dragStartRawY = 0f; var dragStartScrollY = 0
 
+        // ── Vertical scroll ────────────────────────────────────────────────
         xmlScrollView.setOnScrollChangeListener(NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
             updateThumbPosition(scrollY); showThumb(); scheduleFade()
-            // Viewport debounce 100ms — déclenché après l'arrêt du scroll
+            spanApplier.cancel()
             viewportRunnable?.let { viewportHandler.removeCallbacks(it) }
             val r = Runnable { updateViewportSpans() }.also { viewportRunnable = it }
             viewportHandler.postDelayed(r, 100)
         })
+
+        // ── Horizontal scroll ──────────────────────────────────────────────
+        // HorizontalScrollView has no OnScrollChangeListener in API < 23,
+        // so we use a touch listener.
+        // ACTION_MOVE  → cancel any in-progress span batch (prevents janky frames)
+        // ACTION_UP/CANCEL → schedule updateViewportSpans after 100 ms idle
+        xmlHorizontalScroll.setOnTouchListener { _, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_MOVE -> {
+                    spanApplier.cancel()
+                    viewportRunnable?.let { viewportHandler.removeCallbacks(it) }
+                }
+                MotionEvent.ACTION_UP,
+                MotionEvent.ACTION_CANCEL -> {
+                    viewportRunnable?.let { viewportHandler.removeCallbacks(it) }
+                    val r = Runnable { updateViewportSpans() }.also { viewportRunnable = it }
+                    viewportHandler.postDelayed(r, 100)
+                }
+            }
+            false   // don't consume — let HorizontalScrollView handle fling/scroll
+        }
 
         scrollbarThumb.setOnTouchListener { v, event ->
             when (event.actionMasked) {
@@ -393,20 +400,26 @@ class XmlPreviewActivity : AppCompatActivity() {
                     setThumbColor("#6200EE"); fadeHandler.removeCallbacks(fadeRunnable); v.alpha = 1f; true
                 }
                 MotionEvent.ACTION_MOVE -> {
-                    val total   = xmlScrollView.getChildAt(0)?.height ?: return@setOnTouchListener true
-                    val vis     = xmlScrollView.height
-                    val range   = total - vis; if (range <= 0) return@setOnTouchListener true
-                    val track   = (v.parent as? View)?.height?.minus(8) ?: return@setOnTouchListener true
-                    val tRange  = track - v.height; if (tRange <= 0) return@setOnTouchListener true
-                    val delta   = ((event.rawY - dragStartRawY) / tRange * range).toInt()
+                    val total  = xmlScrollView.getChildAt(0)?.height ?: return@setOnTouchListener true
+                    val vis    = xmlScrollView.height
+                    val range  = total - vis; if (range <= 0) return@setOnTouchListener true
+                    val track  = (v.parent as? View)?.height?.minus(8) ?: return@setOnTouchListener true
+                    val tRange = track - v.height; if (tRange <= 0) return@setOnTouchListener true
+                    val delta  = ((event.rawY - dragStartRawY) / tRange * range).toInt()
                     xmlScrollView.scrollTo(0, (dragStartScrollY + delta).coerceIn(0, range)); true
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { setThumbColor("#66AAAAAA"); scheduleFade(); true }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    setThumbColor("#66AAAAAA"); scheduleFade(); true
+                }
                 else -> false
             }
         }
 
-        xmlScrollView.post { updateThumbPosition(0); scrollbarThumb.alpha = 0f; scrollbarThumb.visibility = View.VISIBLE }
+        xmlScrollView.post {
+            updateThumbPosition(0)
+            scrollbarThumb.alpha = 0f
+            scrollbarThumb.visibility = View.VISIBLE
+        }
     }
 
     private fun updateThumbPosition(scrollY: Int) {
@@ -419,12 +432,17 @@ class XmlPreviewActivity : AppCompatActivity() {
         val thumbH   = ((vis.toFloat() / total) * track).toInt().coerceAtLeast(minThumbPx)
         val ratio    = scrollY.toFloat() / (total - vis)
         val thumbTop = (ratio * (track - thumbH) + 4).toInt().coerceIn(4, track - thumbH + 4)
-        if (scrollbarThumb.height != thumbH) { val lp = scrollbarThumb.layoutParams; lp.height = thumbH; scrollbarThumb.layoutParams = lp }
+        if (scrollbarThumb.height != thumbH) {
+            val lp = scrollbarThumb.layoutParams; lp.height = thumbH; scrollbarThumb.layoutParams = lp
+        }
         scrollbarThumb.translationY = thumbTop.toFloat()
     }
 
     private fun showThumb()    { scrollbarThumb.animate().cancel(); scrollbarThumb.alpha = 1f }
-    private fun scheduleFade() { fadeHandler.removeCallbacks(fadeRunnable); fadeHandler.postDelayed(fadeRunnable, 1500) }
+    private fun scheduleFade() {
+        fadeHandler.removeCallbacks(fadeRunnable)
+        fadeHandler.postDelayed(fadeRunnable, 1500)
+    }
 
     private fun setThumbColor(hex: String) {
         val dp6 = 6f * resources.displayMetrics.density
