@@ -11,6 +11,7 @@ import android.text.Spannable
 import android.text.SpannableString
 import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
+import android.view.GestureDetector
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
@@ -34,6 +35,7 @@ import com.cawcafr.ameditor.util.SpanRecord
 import com.cawcafr.ameditor.util.ViewportSpanApplier
 import com.cawcafr.ameditor.util.XmlSyntaxHighlighter
 import org.lsposed.lsparanoid.Obfuscate
+import androidx.core.graphics.drawable.toDrawable
 
 @Obfuscate
 class XmlPreviewActivity : AppCompatActivity() {
@@ -90,6 +92,34 @@ class XmlPreviewActivity : AppCompatActivity() {
         scrollbarThumb.animate().alpha(0f).setDuration(600).start()
     }
 
+    // ── Custom text selection ─────────────────────────────────────────────────
+    // Replaces the system ActionMode selection which calls makeNewLayout() over
+    // all spans → freeze on large files.
+    //
+    // Strategy:
+    //   • textIsSelectable=false  → no system ActionMode, no makeNewLayout()
+    //   • Single tap              → select the XML token (tag / attr / value)
+    //                               under the finger
+    //   • Long press              → select the entire line under the finger
+    //   • Both                    → show PopupMenu with Copy / Copy Line /
+    //                               Select All / Deselect
+    //   • Selection highlight     → one BackgroundColorSpan, swapped O(1)
+    //   • ▲ button                → expand selection one level up
+    //   • ▼ button                → shrink selection one level down
+    //
+    // Selection levels (▲ goes up, ▼ goes down):
+    //   0 = sub-word (letters only, no dots)
+    //   1 = dotted identifier  e.g. android.permission.CAMERA
+    //   2 = quoted value       e.g. "android.permission.CAMERA"
+    //   3 = full line (trimmed)
+    //   4 = XML element        e.g. <uses-permission … />
+    //   5 = entire file
+    private var selectionStart = -1
+    private var selectionEnd   = -1
+    private var selectionLevel = 0
+    private var selectionSpan: BackgroundColorSpan? = null
+    private val COLOR_SELECTION = 0x554FC3F7.toInt()   // light-blue, semi-transparent
+
     // ════════════════════════════════════════════════════════════════════════
     // Lifecycle
     // ════════════════════════════════════════════════════════════════════════
@@ -110,6 +140,7 @@ class XmlPreviewActivity : AppCompatActivity() {
     override fun onDestroy() {
         super.onDestroy()
         spanApplier.cancel()
+        selectionPopup?.dismiss()
         viewportHandler.removeCallbacksAndMessages(null)
         fadeHandler.removeCallbacksAndMessages(null)
     }
@@ -125,6 +156,7 @@ class XmlPreviewActivity : AppCompatActivity() {
         supportActionBar?.title = "AndroidManifest.xml"
     }
 
+    @SuppressLint("ClickableViewAccessibility")
     private fun setupViews() {
         codeTextView        = findViewById(R.id.codeTextView)
         xmlScrollView       = findViewById(R.id.xmlScrollView)
@@ -141,17 +173,366 @@ class XmlPreviewActivity : AppCompatActivity() {
         searchBar.visibility     = View.GONE
         searchDivider.visibility = View.GONE
 
-        // Cancel any in-progress span batch the instant the user touches the
-        // text view. Without this, setSpan() calls from the batch accumulate
-        // dirty flags on the TextView; when Android then calls makeNewLayout()
-        // to position the cursor/selection it has to iterate all spans → freeze.
-        codeTextView.setOnTouchListener { v, event ->
+        // Disable system text selection — it calls makeNewLayout() over all
+        // spans on large files → freeze. We handle selection ourselves below.
+        codeTextView.setTextIsSelectable(false)
+
+        val gd = GestureDetector(this, object : GestureDetector.SimpleOnGestureListener() {
+
+            override fun onSingleTapUp(e: MotionEvent): Boolean {
+                val offset = offsetForEvent(e) ?: return false
+                val (s, en) = tokenRangeAt(offset)
+                if (s >= 0 && en > s) showCustomSelection(s, en)
+                else clearCustomSelection()
+                return true
+            }
+
+            override fun onLongPress(e: MotionEvent) {
+                val offset = offsetForEvent(e) ?: return
+                val (s, en) = tokenRangeAt(offset)
+                if (s >= 0 && en > s) showCustomSelection(s, en)
+                else clearCustomSelection()
+            }
+        })
+
+        codeTextView.setOnTouchListener { _, event ->
+            // Cancel any in-progress span batch immediately on touch.
+            // Prevents accumulated dirty flags from triggering a full re-layout.
             if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                 spanApplier.cancel()
                 viewportRunnable?.let { viewportHandler.removeCallbacks(it) }
             }
-            v.onTouchEvent(event)   // let TextView handle selection normally
+            gd.onTouchEvent(event)
+            true
         }
+    }
+
+    // ─── Custom selection helpers ─────────────────────────────────────────────
+
+    /** Returns the character offset in the text corresponding to a touch event. */
+    private fun offsetForEvent(e: MotionEvent): Int? {
+        val layout = codeTextView.layout ?: return null
+        val x = (e.x - codeTextView.totalPaddingLeft).toInt()
+        val y = (e.y - codeTextView.totalPaddingTop).toInt()
+        if (y < 0) return null
+        val line = layout.getLineForVertical(y).coerceAtMost(layout.lineCount - 1)
+        return layout.getOffsetForHorizontal(line, x.toFloat())
+    }
+
+    /**
+     * Returns the start/end of the XML token (tag name, attribute name,
+     * or quoted value) that contains [offset].
+     * Always returns a valid range: falls back to any non-whitespace run if
+     * no XML identifier or quoted value matches — so every character in the
+     * document is selectable.
+     */
+    private fun tokenRangeAt(offset: Int): Pair<Int, Int> {
+        val text = codeTextView.text?.toString() ?: return -1 to -1
+        if (offset < 0 || offset >= text.length) return -1 to -1
+
+        // ── 1. Quoted attribute value "…" ─────────────────────────────────────
+        // Check if we're inside or on a quote boundary
+        val onOrInsideQuote = text[offset] == '"' || run {
+            var i = offset
+            while (i >= 0 && text[i] != '"' && text[i] != '\n') i--
+            if (i >= 0 && text[i] == '"') {
+                var j = offset
+                while (j < text.length && text[j] != '"' && text[j] != '\n') j++
+                j < text.length && text[j] == '"'
+            } else false
+        }
+        if (onOrInsideQuote) {
+            var s = offset; while (s > 0 && text[s] != '"') s--
+            var e = offset; while (e < text.length && text[e] != '"') e++
+            if (s < e && text[s] == '"' && e < text.length) return s to (e + 1)
+        }
+
+        // ── 2. XML identifier (letters, digits, :, -, _, ., /) ───────────────
+        // Include / so that </tag> closing slashes can be selected with the tag
+        val isIdChar = { c: Char -> c.isLetterOrDigit() || c in ":-_./!" }
+        var s = offset
+        var e = offset
+        while (s > 0 && isIdChar(text[s - 1])) s--
+        while (e < text.length && isIdChar(text[e])) e++
+        if (e > s) return s to e
+
+        // ── 3. Single special character (<, >, =, ?, space, etc.) ────────────
+        // If the finger is on a whitespace-only position, expand to the nearest
+        // non-whitespace run on either side (prefer right side first).
+        if (text[offset].isWhitespace()) {
+            // Try right
+            var r = offset
+            while (r < text.length && text[r].isWhitespace()) r++
+            if (r < text.length && text[r] != '\n') {
+                val rEnd = run { var i = r; while (i < text.length && !text[i].isWhitespace()) i++; i }
+                return r to rEnd
+            }
+            // Try left
+            var l = offset - 1
+            while (l >= 0 && text[l].isWhitespace()) l--
+            if (l >= 0 && text[l] != '\n') {
+                val lStart = run { var i = l; while (i > 0 && !text[i - 1].isWhitespace()) i--; i }
+                return lStart to (l + 1)
+            }
+            // Whole line as last resort
+            val layout = codeTextView.layout
+            if (layout != null) {
+                val line  = layout.getLineForOffset(offset.coerceIn(0, text.length - 1))
+                val ls    = layout.getLineStart(line)
+                val le    = layout.getLineEnd(line).let {
+                    if (it > ls && text[it - 1] == '\n') it - 1 else it
+                }
+                if (le > ls) return ls to le
+            }
+        }
+
+        // ── 4. Any non-whitespace run (handles <, >, =, standalone chars) ────
+        var ns = offset; while (ns > 0 && !text[ns - 1].isWhitespace() && text[ns - 1] != '\n') ns--
+        var ne = offset; while (ne < text.length && !text[ne].isWhitespace() && text[ne] != '\n') ne++
+        return if (ne > ns) ns to ne else offset to (offset + 1).coerceAtMost(text.length)
+    }
+
+    /** Applies a selection highlight and shows the copy popup above the selection. */
+    private fun showCustomSelection(start: Int, end: Int) {
+        selectionLevel = 0   // reset level on a fresh tap/long-press
+        applySelection(start, end)
+    }
+
+    private var selectionPopup: android.widget.PopupWindow? = null
+
+    private fun showSelectionPopup(start: Int, end: Int) {
+        selectionPopup?.dismiss()
+        val layout = codeTextView.layout ?: return
+        val ctx    = this
+        val dm     = resources.displayMetrics
+        val dp8    = (8  * dm.density).toInt()
+        val dp12   = (12 * dm.density).toInt()
+        val dp36   = (36 * dm.density).toInt()
+        val dp1    = (1  * dm.density).toInt().coerceAtLeast(1)
+
+        // ── Build container ───────────────────────────────────────────────────
+        val container = android.widget.LinearLayout(ctx).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            setPadding(dp8, dp8 / 2, dp8, dp8 / 2)
+            setBackgroundResource(android.R.drawable.dialog_holo_light_frame)
+            elevation = 8f * dm.density
+        }
+
+        fun sep() = android.view.View(ctx).apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(dp1,
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT)
+                .also { it.setMargins(0, dp8, 0, dp8) }
+            setBackgroundColor(0xFFCCCCCC.toInt())
+        }
+
+        fun btn(label: String, action: () -> Unit) = TextView(ctx).apply {
+            text      = label
+            textSize  = 14f
+            typeface  = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(0xFF1565C0.toInt())
+            setPadding(dp12, dp8, dp12, dp8)
+            minHeight   = dp36
+            gravity     = android.view.Gravity.CENTER_VERTICAL
+            isClickable = true
+            isFocusable = true
+            setOnClickListener { selectionPopup?.dismiss(); action() }
+        }
+
+        container.addView(btn("Copy") {
+            copyToClipboard(xmlContent.substring(start, end))
+        })
+        container.addView(sep())
+        container.addView(btn("Copy line") {
+            val line = layout.getLineForOffset(start)
+            val ls   = layout.getLineStart(line)
+            val le   = layout.getLineEnd(line)
+                .let { if (it > ls && xmlContent[it - 1] == '\n') it - 1 else it }
+            copyToClipboard(xmlContent.substring(ls, le))
+        })
+        container.addView(sep())
+        container.addView(btn("▲") { expandSelection() })
+        container.addView(sep())
+        container.addView(btn("▼") { shrinkSelection() })
+        container.addView(sep())
+        container.addView(btn("✕") { clearCustomSelection() })
+
+        // ── Measure ───────────────────────────────────────────────────────────
+        container.measure(
+            android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED),
+            android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED)
+        )
+        val popW = container.measuredWidth
+        val popH = container.measuredHeight
+
+        // ── Position — fixed bug: getLocationOnScreen already includes scroll ──
+        // Old code subtracted vScroll / hScroll a second time → popup drifted up.
+        // Now: tvPos[0/1] from getLocationOnScreen + layout coords only.
+        val tvPos   = IntArray(2); codeTextView.getLocationOnScreen(tvPos)
+        val selLine = layout.getLineForOffset(start)
+        val selX    = layout.getPrimaryHorizontal(start).toInt()
+        val selTop  = layout.getLineTop(selLine)
+
+        val screenX  = tvPos[0] + codeTextView.paddingLeft + selX
+        val screenY  = tvPos[1] + codeTextView.paddingTop  + selTop
+        val screenW  = dm.widthPixels
+        val popX     = (screenX - popW / 2).coerceIn(0, (screenW - popW).coerceAtLeast(0))
+        val popY     = (screenY - popH - dp8).coerceAtLeast(0)
+
+        // ── Show ──────────────────────────────────────────────────────────────
+        val popup = android.widget.PopupWindow(container,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT, false).apply {
+            isOutsideTouchable = true
+            isFocusable        = false
+            setBackgroundDrawable(
+                android.graphics.Color.TRANSPARENT.toDrawable())
+        }
+        popup.showAtLocation(window.decorView, android.view.Gravity.NO_GRAVITY, popX, popY)
+        selectionPopup = popup
+    }
+
+    // ── Hierarchical expand / shrink ──────────────────────────────────────────
+    //
+    // Levels:
+    //   0 = sub-word    "permission"  (no dots, just letters/digits/_)
+    //   1 = dotted id   "android.permission.CAMERA"
+    //   2 = quoted val  "\"android.permission.CAMERA\""
+    //   3 = full line   (trimmed whitespace)
+    //   4 = XML element from the nearest < to its matching >
+    //   5 = entire file
+
+    private fun expandSelection() {
+        if (selectionStart < 0) return
+        val (ns, ne, nl) = nextLevel(selectionStart, selectionEnd, selectionLevel, up = true)
+        selectionLevel = nl
+        applySelection(ns, ne)
+    }
+
+    private fun shrinkSelection() {
+        if (selectionStart < 0) return
+        val (ns, ne, nl) = nextLevel(selectionStart, selectionEnd, selectionLevel, up = false)
+        selectionLevel = nl
+        applySelection(ns, ne)
+    }
+
+    private data class Sel(val start: Int, val end: Int, val level: Int)
+
+    private fun nextLevel(curStart: Int, curEnd: Int, curLevel: Int, up: Boolean): Sel {
+        val text = xmlContent
+        if (up) {
+            // Expand to next broader level
+            return when {
+                curLevel < 1 -> {
+                    // → dotted identifier
+                    val isId = { c: Char -> c.isLetterOrDigit() || c in "-_:." }
+                    var s = curStart; var e = curEnd
+                    while (s > 0 && isId(text[s - 1])) s--
+                    while (e < text.length && isId(text[e])) e++
+                    Sel(s, e, 1)
+                }
+                curLevel < 2 -> {
+                    // → quoted value if inside quotes
+                    var s = curStart
+                    var e = curEnd
+                    while (s > 0 && text[s] != '"' && text[s] != '\n') s--
+                    while (e < text.length && text[e] != '"' && text[e] != '\n') e++
+                    if (s >= 0 && e < text.length && text[s] == '"' && text[e] == '"')
+                        Sel(s, e + 1, 2)
+                    else
+                        expandToLine(curStart, 3, text)
+                }
+                curLevel < 3 -> expandToLine(curStart, 3, text)
+                curLevel < 4 -> {
+                    // → XML element: find enclosing < … >
+                    var s = curStart
+                    while (s > 0 && text[s] != '<') s--
+                    var e = curEnd
+                    // Find closing > — handle self-closing />
+                    while (e < text.length && text[e] != '>') e++
+                    if (e < text.length) e++ // include >
+                    Sel(s, e, 4)
+                }
+                else -> Sel(0, text.length, 5)
+            }
+        } else {
+            // Shrink to previous narrower level
+            return when {
+                curLevel <= 1 -> {
+                    // → sub-word (no dots)
+                    val isSubId = { c: Char -> c.isLetterOrDigit() || c == '_' }
+                    var s = curStart; var e = curStart
+                    // Find a segment of the current selection that is a sub-word
+                    while (s < curEnd && !isSubId(text[s])) s++
+                    e = s
+                    while (e < curEnd && isSubId(text[e])) e++
+                    if (e > s) Sel(s, e, 0)
+                    else Sel(curStart, curEnd, 1)
+                }
+                curLevel == 2 -> {
+                    // → dotted identifier (strip quotes)
+                    val s = if (curStart < text.length && text[curStart] == '"') curStart + 1 else curStart
+                    val e = if (curEnd > 0 && text[curEnd - 1] == '"') curEnd - 1 else curEnd
+                    Sel(s, e, 1)
+                }
+                curLevel == 3 -> {
+                    // → back to dotted id under line start
+                    val isId = { c: Char -> c.isLetterOrDigit() || c in "-_:." }
+                    var s = curStart; while (s < curEnd && !isId(text[s])) s++
+                    var e = s; while (e < curEnd && isId(text[e])) e++
+                    if (e > s) Sel(s, e, 1) else Sel(curStart, curEnd, 3)
+                }
+                curLevel == 4 -> expandToLine(curStart, 3, text)
+                else          -> {
+                    // 5 → 4: XML element around the middle of the file
+                    val mid = text.length / 2
+                    var s   = mid; while (s > 0 && text[s] != '<') s--
+                    var e   = mid; while (e < text.length && text[e] != '>') e++
+                    if (e < text.length) e++
+                    Sel(s, e, 4)
+                }
+            }
+        }
+    }
+
+    private fun expandToLine(offset: Int, level: Int, text: String): Sel {
+        val layout = codeTextView.layout ?: return Sel(offset, offset, level)
+        val line   = layout.getLineForOffset(offset.coerceIn(0, text.length - 1))
+        val ls     = layout.getLineStart(line)
+        val le     = layout.getLineEnd(line)
+            .let { if (it > ls && text[it - 1] == '\n') it - 1 else it }
+        // Trim leading whitespace
+        var s = ls; while (s < le && text[s] == ' ') s++
+        return Sel(s, le, level)
+    }
+
+    // ── Apply / clear / copy ──────────────────────────────────────────────────
+
+    private fun applySelection(start: Int, end: Int) {
+        val spannable = codeTextView.text as? Spannable ?: return
+        selectionSpan?.let { spannable.removeSpan(it) }
+        val span = BackgroundColorSpan(COLOR_SELECTION)
+        spannable.setSpan(span, start, end, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        selectionSpan  = span
+        selectionStart = start
+        selectionEnd   = end
+        codeTextView.post { showSelectionPopup(start, end) }
+    }
+
+    private fun clearCustomSelection() {
+        selectionPopup?.dismiss(); selectionPopup = null
+        val spannable = codeTextView.text as? Spannable ?: return
+        selectionSpan?.let { spannable.removeSpan(it) }
+        selectionSpan  = null
+        selectionStart = -1
+        selectionEnd   = -1
+        selectionLevel = 0
+    }
+
+    private fun copyToClipboard(text: String) {
+        val cb = getSystemService(ClipboardManager::class.java)
+        cb.setPrimaryClip(ClipData.newPlainText("xml", text))
+        Toast.makeText(this, "Copied", Toast.LENGTH_SHORT).show()
+        viewportHandler.postDelayed({ clearCustomSelection() }, 800)
     }
 
     // ════════════════════════════════════════════════════════════════════════

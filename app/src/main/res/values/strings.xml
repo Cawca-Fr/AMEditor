@@ -3,7 +3,7 @@
     <string name="selected_apk_message">Selected APK: %1$s</string>
     <string name="processing_started">Starting Patch…\nPlease wait during processing.</string>
     <string name="select_apk_first">Please select an APK file first.</string>
-    <string name="process_apk_button_text" translatable="false">Patch APK</string>
+    <string name="process_apk_button_text" translatable="false">Patch XML</string>
     <string name="select_apk_button_text" translatable="false">Select APK</string>
 
     <!-- Permissions -->

@@ -138,6 +138,9 @@ class CustomPatchActivity : AppCompatActivity() {
     private fun setupViews() {
         xmlTextView         = findViewById(R.id.xmlTextView)
         xmlTextView.highlightColor = android.graphics.Color.TRANSPARENT
+        // Disable system selection — triggers makeNewLayout() over all syntax
+        // spans → freeze. Node highlights use BackgroundColorSpan directly.
+        xmlTextView.setTextIsSelectable(false)
         btnDelete           = findViewById(R.id.btnModeDelete)
         btnDeactivate       = findViewById(R.id.btnModeDeactivate)
         xmlScrollView       = findViewById(R.id.xmlScrollView)
