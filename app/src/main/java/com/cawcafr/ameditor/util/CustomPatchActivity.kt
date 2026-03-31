@@ -16,15 +16,23 @@ import android.view.GestureDetector
 import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
+import android.view.View
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
+import android.widget.ImageButton
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.AppCompatEditText
 import androidx.core.graphics.toColorInt
 import androidx.core.text.PrecomputedTextCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.isVisible
+import androidx.core.widget.NestedScrollView
 import androidx.core.widget.TextViewCompat
+import androidx.core.widget.doAfterTextChanged
 import com.cawcafr.ameditor.R
 import com.cawcafr.ameditor.XmlContentHolder
 import org.lsposed.lsparanoid.Obfuscate
@@ -37,9 +45,18 @@ class CustomPatchActivity : AppCompatActivity() {
     private lateinit var xmlTextView: TextView
     private lateinit var btnDelete: com.google.android.material.button.MaterialButton
     private lateinit var btnDeactivate: com.google.android.material.button.MaterialButton
-    private lateinit var xmlScrollView: androidx.core.widget.NestedScrollView
+    private lateinit var xmlScrollView: NestedScrollView
     private lateinit var xmlHorizontalScroll: android.widget.HorizontalScrollView
-    private lateinit var scrollbarThumb: android.view.View
+    private lateinit var scrollbarThumb: View
+
+    // ── Search UI ─────────────────────────────────────────────────────────────
+    private lateinit var searchBar: View
+    private lateinit var searchDivider: View
+    private lateinit var etSearch: AppCompatEditText
+    private lateinit var tvSearchCount: TextView
+    private lateinit var btnSearchPrev: ImageButton
+    private lateinit var btnSearchNext: ImageButton
+    private lateinit var btnSearchClose: ImageButton
 
     private var minThumbPx   = 0
     private val fadeHandler  = Handler(Looper.getMainLooper())
@@ -63,9 +80,6 @@ class CustomPatchActivity : AppCompatActivity() {
     private var loadingDialog: AlertDialog? = null
 
     // ── Viewport colorization ─────────────────────────────────────────────────
-    // Same architecture as XmlPreviewActivity: chunked background loading +
-    // micro-batched span application via ViewportSpanApplier.
-
     @Volatile private var allSpanInfos: List<SpanRecord> = emptyList()
     private val appliedHighlightSpans = mutableMapOf<Int, Any>()
     private val spanApplier           = ViewportSpanApplier()
@@ -76,12 +90,21 @@ class CustomPatchActivity : AppCompatActivity() {
     private val viewportHandler  = Handler(Looper.getMainLooper())
     private var viewportRunnable: Runnable? = null
 
+    // ── Search State ──────────────────────────────────────────────────────────
+    private val searchResults    = mutableListOf<Int>()
+    private var currentResult    = -1
+    private var lastQuery        = ""
+    private val COLOR_MATCH_BG   = 0x55FFD600.toInt()
+    private val COLOR_CURRENT_BG = 0xCCFF6F00.toInt()
+    private val activeMatchSpans = mutableListOf<BackgroundColorSpan>()
+    private val currentMatchSpan = mutableListOf<BackgroundColorSpan>()
+
     companion object {
-        private const val TAG      = "CustomPatchActivity"
-        private const val MAX_UNDO = 30
-        private val PROTECTED_TAGS   = setOf("manifest", "application")
-        private val COLOR_DELETE     = 0x40D32F2F.toInt()
-        private val COLOR_DEACTIVATE = 0x40FBC02D.toInt()
+        private const val TAG          = "CustomPatchActivity"
+        private const val MAX_UNDO     = 30
+        private val PROTECTED_TAGS     = setOf("manifest", "application")
+        private val COLOR_DELETE       = 0x40D32F2F.toInt()
+        private val COLOR_DEACTIVATE   = 0x40FBC02D.toInt()
     }
 
     enum class Mode { DELETE, DEACTIVATE, NONE }
@@ -136,41 +159,37 @@ class CustomPatchActivity : AppCompatActivity() {
     }
 
     private fun setupViews() {
+        // Fix: Use xmlTextView instead of xmlTextView which might be confused with layout id
         xmlTextView         = findViewById(R.id.xmlTextView)
         xmlTextView.highlightColor = android.graphics.Color.TRANSPARENT
-        // Disable system selection — triggers makeNewLayout() over all syntax
-        // spans → freeze. Node highlights use BackgroundColorSpan directly.
         xmlTextView.setTextIsSelectable(false)
         btnDelete           = findViewById(R.id.btnModeDelete)
         btnDeactivate       = findViewById(R.id.btnModeDeactivate)
         xmlScrollView       = findViewById(R.id.xmlScrollView)
         xmlHorizontalScroll = findViewById(R.id.xmlHorizontalScroll)
         scrollbarThumb      = findViewById(R.id.scrollbarThumb)
-        minThumbPx     = (56 * resources.displayMetrics.density).toInt()
-        setupCustomScrollbar(); refreshButtonLabels()
+
+        // Search Views initialization
+        searchBar           = findViewById(R.id.searchBar)
+        searchDivider       = findViewById(R.id.searchDivider)
+        etSearch            = findViewById(R.id.etSearch)
+        tvSearchCount       = findViewById(R.id.tvSearchCount)
+        btnSearchPrev       = findViewById(R.id.btnSearchPrev)
+        btnSearchNext       = findViewById(R.id.btnSearchNext)
+        btnSearchClose      = findViewById(R.id.btnSearchClose)
+
+        searchBar.visibility     = View.GONE
+        searchDivider.visibility = View.GONE
+
+        minThumbPx = (56 * resources.displayMetrics.density).toInt()
+
+        setupCustomScrollbar()
+        refreshButtonLabels()
+        setupSearch()
     }
 
     // ════════════════════════════════════════════════════════════════════════
     // Render
-    //
-    // POURQUOI LE FREEZE DANS CustomPatchActivity (mais pas XmlPreviewActivity) :
-    //
-    // CustomPatchActivity affiche un loading dialog pendant parseNodes().
-    // Quand le dialog se ferme, le thread background enchaîne immédiatement
-    // 25 runOnUiThread { allSpanInfos = …; updateViewportSpans() } en rafale
-    // (un par chunk de 80KB sur un XML de 2MB).
-    //
-    // Chaque updateViewportSpans() applique 60 spans synchrones + layout pass.
-    // L'utilisateur voit le dialog se fermer et essaie de scroller, mais le
-    // main thread est saturé par 25 × (60 setSpan + layout) = 1500 setSpan.
-    //
-    // FIX : dans le chunk loop, seul allSpanInfos est mis à jour (pure
-    // assignment, 0 layout work). Les viewport updates viennent UNIQUEMENT de :
-    //   1. xmlScrollView.post { updateViewportSpans() } juste après setText
-    //      → colorise la zone visible initiale
-    //   2. Le scroll listener (debounce 100ms après chaque arrêt)
-    //   3. Un seul post final quand tous les chunks sont prêts
-    //      → colorise si l'utilisateur n'a pas encore scrollé
     // ════════════════════════════════════════════════════════════════════════
 
     private fun startRender() {
@@ -179,27 +198,21 @@ class CustomPatchActivity : AppCompatActivity() {
             .setCancelable(false)
             .create().also { it.show() }
 
-        val params = TextViewCompat.getTextMetricsParams(xmlTextView)   // main thread only
+        val params = TextViewCompat.getTextMetricsParams(xmlTextView)
 
         Thread {
             try {
-                // Step 1 — parse XML nodes for tap detection
                 parseNodes(xmlContent)
                 displayedText = xmlContent
 
-                // Step 2 — plain text layout (instantaneous setText on main thread)
                 val precomputed = PrecomputedTextCompat.create(SpannableString(xmlContent), params)
                 runOnUiThread {
                     TextViewCompat.setPrecomputedText(xmlTextView, precomputed)
                     isParsed = true
                     loadingDialog?.dismiss(); loadingDialog = null
-                    // Post ONE initial viewport update — colorises the visible area on open.
-                    // No further viewport updates are posted from the chunk loop.
                     xmlScrollView.post { updateViewportSpans() }
                 }
 
-                // Step 3 — 80 KB chunks: update allSpanInfos ONLY, no layout work.
-                // The scroll listener drives viewport updates as the user navigates.
                 val len         = xmlContent.length
                 val numChunks   = (len + HIGHLIGHT_CHUNK - 1) / HIGHLIGHT_CHUNK
                 val accumulated = ArrayList<SpanRecord>()
@@ -216,14 +229,10 @@ class CustomPatchActivity : AppCompatActivity() {
                             }
                     )
 
-                    // Pure pointer assignment — zero layout work on main thread.
                     val snapshot: List<SpanRecord> = accumulated.toList()
                     runOnUiThread { allSpanInfos = snapshot }
                 }
 
-                // Step 4 — all spans are now ready: one final viewport update.
-                // This covers the case where the user hasn't scrolled yet but
-                // new spans outside the initial viewport are now available.
                 runOnUiThread { updateViewportSpans() }
 
             } catch (e: Exception) {
@@ -240,7 +249,6 @@ class CustomPatchActivity : AppCompatActivity() {
 
     // ════════════════════════════════════════════════════════════════════════
     // Viewport colorization — BATCHED
-    // See XmlPreviewActivity for full architectural notes.
     // ════════════════════════════════════════════════════════════════════════
 
     private fun updateViewportSpans() {
@@ -282,6 +290,94 @@ class CustomPatchActivity : AppCompatActivity() {
     }
 
     // ════════════════════════════════════════════════════════════════════════
+    // Search
+    // ════════════════════════════════════════════════════════════════════════
+
+    private fun setupSearch() {
+        etSearch.doAfterTextChanged { text ->
+            val q = text?.toString() ?: ""
+            if (q != lastQuery) { lastQuery = q; performSearch(q) }
+        }
+        etSearch.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) { navigateResult(+1); true } else false
+        }
+        btnSearchNext.setOnClickListener  { navigateResult(+1) }
+        btnSearchPrev.setOnClickListener  { navigateResult(-1) }
+        btnSearchClose.setOnClickListener { closeSearch() }
+    }
+
+    private fun performSearch(query: String) {
+        clearSearchSpans(); searchResults.clear(); currentResult = -1; tvSearchCount.text = ""
+        if (query.length < 2) return
+        val spannable = xmlTextView.text as? Spannable ?: return
+        val fullText  = spannable.toString()
+        var idx = fullText.indexOf(query, ignoreCase = true)
+        while (idx >= 0) { searchResults.add(idx); idx = fullText.indexOf(query, idx + 1, ignoreCase = true) }
+
+        if (searchResults.isEmpty()) {
+            tvSearchCount.text = "0"; tvSearchCount.setTextColor("#D32F2F".toColorInt()); return
+        }
+
+        val defColor = try { resources.getColor(android.R.color.darker_gray, theme) } catch(e:Exception) { Color.GRAY }
+        tvSearchCount.setTextColor(defColor)
+
+        for (pos in searchResults) {
+            val span = BackgroundColorSpan(COLOR_MATCH_BG)
+            spannable.setSpan(span, pos, pos + query.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+            activeMatchSpans.add(span)
+        }
+        navigateResult(+1)
+    }
+
+    private fun navigateResult(direction: Int) {
+        if (searchResults.isEmpty()) return
+        currentResult = when {
+            currentResult < 0  -> 0
+            direction > 0      -> (currentResult + 1) % searchResults.size
+            else               -> (currentResult - 1 + searchResults.size) % searchResults.size
+        }
+        tvSearchCount.text = getString(R.string.search_count, currentResult + 1, searchResults.size)
+        val spannable = xmlTextView.text as? Spannable ?: return
+        currentMatchSpan.forEach { spannable.removeSpan(it) }; currentMatchSpan.clear()
+
+        val pos  = searchResults[currentResult]
+        val span = BackgroundColorSpan(COLOR_CURRENT_BG)
+        spannable.setSpan(span, pos, pos + lastQuery.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        currentMatchSpan.add(span)
+        scrollToPosition(pos)
+    }
+
+    private fun scrollToPosition(charOffset: Int) {
+        xmlTextView.post {
+            val layout = xmlTextView.layout ?: return@post
+            val line   = layout.getLineForOffset(charOffset)
+            val lineY  = layout.getLineTop(line) + xmlTextView.paddingTop
+            xmlScrollView.smoothScrollTo(0, (lineY - xmlScrollView.height / 2).coerceAtLeast(0))
+        }
+    }
+
+    private fun clearSearchSpans() {
+        val sp = xmlTextView.text as? Spannable ?: return
+        activeMatchSpans.forEach { sp.removeSpan(it) }; activeMatchSpans.clear()
+        currentMatchSpan.forEach { sp.removeSpan(it) }; currentMatchSpan.clear()
+    }
+
+    private fun openSearch() {
+        searchBar.visibility = View.VISIBLE; searchDivider.visibility = View.VISIBLE
+        etSearch.requestFocus()
+        getSystemService(InputMethodManager::class.java)
+            .showSoftInput(etSearch, InputMethodManager.SHOW_IMPLICIT)
+    }
+
+    private fun closeSearch() {
+        clearSearchSpans(); searchResults.clear(); currentResult = -1; lastQuery = ""
+        etSearch.text?.clear(); tvSearchCount.text = ""
+        searchBar.visibility = View.GONE; searchDivider.visibility = View.GONE
+        getSystemService(InputMethodManager::class.java)
+            .hideSoftInputFromWindow(etSearch.windowToken, 0)
+    }
+
+    // ════════════════════════════════════════════════════════════════════════
     // Scrollbar custom
     // ════════════════════════════════════════════════════════════════════════
 
@@ -290,9 +386,8 @@ class CustomPatchActivity : AppCompatActivity() {
         var dragStartRawY = 0f; var dragStartScrollY = 0
 
         xmlScrollView.setOnScrollChangeListener(
-            androidx.core.widget.NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
+            NestedScrollView.OnScrollChangeListener { _, _, scrollY, _, _ ->
                 updateThumbPosition(scrollY); showThumb(); scheduleFade()
-                // Cancel stale batch on new scroll, then debounce 100 ms
                 spanApplier.cancel()
                 viewportRunnable?.let { viewportHandler.removeCallbacks(it) }
                 val r = Runnable { updateViewportSpans() }.also { viewportRunnable = it }
@@ -300,9 +395,6 @@ class CustomPatchActivity : AppCompatActivity() {
             }
         )
 
-        // ── Horizontal scroll ──────────────────────────────────────────────
-        // HorizontalScrollView has no scroll change listener pre-API 23.
-        // Touch listener: cancel batch on MOVE, reschedule on UP/CANCEL.
         xmlHorizontalScroll.setOnTouchListener { _, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_MOVE -> {
@@ -316,7 +408,7 @@ class CustomPatchActivity : AppCompatActivity() {
                     viewportHandler.postDelayed(r, 100)
                 }
             }
-            false   // don't consume — let HorizontalScrollView handle fling/scroll
+            false
         }
 
         scrollbarThumb.setOnTouchListener { v, event ->
@@ -329,7 +421,7 @@ class CustomPatchActivity : AppCompatActivity() {
                     val total  = xmlScrollView.getChildAt(0)?.height ?: return@setOnTouchListener true
                     val vis    = xmlScrollView.height; val range = total - vis
                     if (range <= 0) return@setOnTouchListener true
-                    val track  = (v.parent as? android.view.View)?.height?.minus(8) ?: return@setOnTouchListener true
+                    val track  = (v.parent as? View)?.height?.minus(8) ?: return@setOnTouchListener true
                     val tRange = track - v.height; if (tRange <= 0) return@setOnTouchListener true
                     val delta  = ((event.rawY - dragStartRawY) / tRange * range).toInt()
                     xmlScrollView.scrollTo(0, (dragStartScrollY + delta).coerceIn(0, range)); true
@@ -344,7 +436,7 @@ class CustomPatchActivity : AppCompatActivity() {
         xmlScrollView.post {
             updateThumbPosition(0)
             scrollbarThumb.alpha = 0f
-            scrollbarThumb.visibility = android.view.View.VISIBLE
+            scrollbarThumb.visibility = View.VISIBLE
         }
     }
 
@@ -357,11 +449,11 @@ class CustomPatchActivity : AppCompatActivity() {
     }
 
     private fun updateThumbPosition(scrollY: Int) {
-        val parent = scrollbarThumb.parent as? android.view.View ?: return
+        val parent = scrollbarThumb.parent as? View ?: return
         val total  = xmlScrollView.getChildAt(0)?.height ?: return
         val vis    = xmlScrollView.height
-        if (total <= vis) { scrollbarThumb.visibility = android.view.View.INVISIBLE; return }
-        scrollbarThumb.visibility = android.view.View.VISIBLE
+        if (total <= vis) { scrollbarThumb.visibility = View.INVISIBLE; return }
+        scrollbarThumb.visibility = View.VISIBLE
         val track  = parent.height - 8
         val thumbH = (vis.toFloat() / total * track).toInt().coerceAtLeast(minThumbPx)
         val ratio  = scrollY.toFloat() / (total - vis)
@@ -486,10 +578,6 @@ class CustomPatchActivity : AppCompatActivity() {
         xmlTextView.setOnTouchListener { v, event ->
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
-                    // Cancel any pending span batch immediately.
-                    // Without this, ongoing setSpan() calls accumulate dirty flags;
-                    // handleTap() → updateVisuals() → setSpan() then forces a full
-                    // makeNewLayout() over all existing spans → freeze on large files.
                     spanApplier.cancel()
                     viewportRunnable?.let { viewportHandler.removeCallbacks(it) }
                     v.parent?.requestDisallowInterceptTouchEvent(true)
@@ -644,7 +732,8 @@ class CustomPatchActivity : AppCompatActivity() {
         menuInflater.inflate(R.menu.menu_custom_patch, menu)
         undoMenuItem = menu?.findItem(R.id.action_undo)
         redoMenuItem = menu?.findItem(R.id.action_redo)
-        updateUndoRedoMenuItems(); return true
+        updateUndoRedoMenuItems()
+        return true
     }
 
     override fun onOptionsItemSelected(item: MenuItem) = when (item.itemId) {
@@ -653,6 +742,7 @@ class CustomPatchActivity : AppCompatActivity() {
         R.id.action_redo                       -> { redo(); true }
         R.id.action_reset                      -> { resetAll(); true }
         R.id.action_summary, R.id.action_apply -> { showSummaryDialog(); true }
+        R.id.action_search -> { if (searchBar.isVisible) closeSearch() else openSearch(); true }
         else                                   -> super.onOptionsItemSelected(item)
     }
 

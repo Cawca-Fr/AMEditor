@@ -23,6 +23,7 @@ import android.widget.*
 import android.content.Intent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.core.content.IntentSanitizer
 import androidx.core.view.WindowCompat
@@ -60,13 +61,14 @@ class MainActivity : AppCompatActivity() {
 
     // Nouvelles vues
     private lateinit var apkInfoBar: View
-    private lateinit var apkInfoDivider: View
+    private lateinit var apkNameText: TextView          // NEW — shows file name
     private lateinit var apkSizeText: TextView
     private lateinit var apkOutputSizeLabel: TextView
     private lateinit var apkOutputSizeText: TextView
     private lateinit var manifestSizeText: TextView
     private lateinit var manifestOutputSizeLabel: TextView
     private lateinit var manifestOutputSizeText: TextView
+    private lateinit var signatureStatusDot: View       // NEW — red/green dot
     private lateinit var signatureBadge: TextView
     private lateinit var progressContainer: View
     private lateinit var processProgressBar: ProgressBar
@@ -222,13 +224,14 @@ class MainActivity : AppCompatActivity() {
 
         // Nouvelles vues
         apkInfoBar        = findViewById(R.id.apkInfoBar)
-        apkInfoDivider    = findViewById(R.id.apkInfoDivider)
+        apkNameText       = findViewById(R.id.apkNameText)
         apkSizeText       = findViewById(R.id.apkSizeText)
         apkOutputSizeLabel = findViewById(R.id.apkOutputSizeLabel)
         apkOutputSizeText = findViewById(R.id.apkOutputSizeText)
         manifestSizeText       = findViewById(R.id.manifestSizeText)
         manifestOutputSizeLabel = findViewById(R.id.manifestOutputSizeLabel)
         manifestOutputSizeText  = findViewById(R.id.manifestOutputSizeText)
+        signatureStatusDot = findViewById(R.id.signatureStatusDot)
         signatureBadge    = findViewById(R.id.signatureBadge)
         progressContainer = findViewById(R.id.progressContainer)
         processProgressBar = findViewById(R.id.processProgressBar)
@@ -308,16 +311,14 @@ class MainActivity : AppCompatActivity() {
     // ══════════════════════════════════════════════════════════════════════════
 
     private fun showApkSizeBar(sizeBytes: Long) {
+        apkNameText.text = originalFileName          // ← NEW: show file name
         apkSizeText.text = formatFileSize(sizeBytes)
-        // Réinitialise les tailles output (nouveau APK sélectionné)
         apkOutputSizeLabel.visibility      = View.GONE
         apkOutputSizeText.visibility       = View.GONE
         manifestOutputSizeLabel.visibility = View.GONE
         manifestOutputSizeText.visibility  = View.GONE
-        // Réinitialise aussi la taille manifest input (sera mise à jour après import)
         manifestSizeText.text = "…"
         apkInfoBar.visibility     = View.VISIBLE
-        apkInfoDivider.visibility = View.VISIBLE
     }
 
     /** Affiche la taille de l'APK output après rebuild. */
@@ -348,17 +349,21 @@ class MainActivity : AppCompatActivity() {
     private fun updateSignatureBadge(state: String, alias: String = "") {
         when (state) {
             "keystore" -> {
-                val label = if (alias.isNotEmpty()) getString(R.string.signature_ready_pkcs12, alias) else getString(R.string.signature_ready_pkcs12_no_alias)
-                signatureBadge.text      = label
+                val label = if (alias.isNotEmpty()) getString(R.string.signature_ready_pkcs12, alias)
+                else getString(R.string.signature_ready_pkcs12_no_alias)
+                signatureBadge.text = label
                 signatureBadge.setTextColor("#16A34A".toColorInt())
+                signatureStatusDot.background = ContextCompat.getDrawable(this, R.drawable.status_dot_green)  // ← NEW
             }
             "pk8" -> {
                 signatureBadge.text = getString(R.string.signature_ready_pk8)
                 signatureBadge.setTextColor("#16A34A".toColorInt())
+                signatureStatusDot.background = ContextCompat.getDrawable(this, R.drawable.status_dot_green)  // ← NEW
             }
             else -> {
                 signatureBadge.text = getString(R.string.signature_no_key)
                 signatureBadge.setTextColor("#9CA3AF".toColorInt())
+                signatureStatusDot.background = ContextCompat.getDrawable(this, R.drawable.status_dot_red)    // ← NEW
             }
         }
     }
