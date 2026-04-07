@@ -10,6 +10,7 @@
     <string name="card_title_modding">Modding Options</string>
     <string name="card_title_signature">Signature</string>
     <string name="label_optional">(Optional)</string>
+    <string name="toast_press_back_again">Press back again to exit</string>
 
     <!-- Permissions -->
     <string name="permission_manage_storage_granted">Permission to access all files granted.</string>

@@ -99,21 +99,27 @@ class ApkManifestPatcher(private val context: Context) {
      * plus compact que la représentation texte XML (~14 KB d'écart typique).
      */
     fun fetchManifestContent(apkFile: File): Pair<String, Long> {
+        // Si c'est un XML standalone (pas un ZIP), décoder directement
+        if (apkFile.name.endsWith(".xml", ignoreCase = true)) {
+            val binarySize = apkFile.length()
+            val xmlString  = decodeManifestToString(apkFile)
+                ?: throw Exception("Failed to decode AXML from standalone manifest")
+            return Pair(xmlString, binarySize)
+        }
+
+        // Sinon comportement normal : extraire depuis le ZIP (APK)
         ZipFile(apkFile).use { zip ->
             val entry = zip.getEntry("AndroidManifest.xml")
                 ?: throw Exception("AndroidManifest.xml not found in APK")
-
-            // Taille binaire réelle depuis les métadonnées ZIP (pas la string décodée)
-            val binarySize = entry.size   // octets du binaire AXML dans le ZIP
-
-            val xmlString = zip.getInputStream(entry).use { stream ->
+            val binarySize = entry.size
+            val xmlString  = zip.getInputStream(entry).use { stream ->
                 aXMLDecoder(stream).decodeAsString()
                     ?: throw Exception("Failed to decode AXML")
             }
-
             return Pair(xmlString, binarySize)
         }
     }
+
 
     private fun extractManifestFromApk(apkFile: File, outputFile: File): Boolean {
         return try {
@@ -165,6 +171,54 @@ class ApkManifestPatcher(private val context: Context) {
             return PatchResult.Error(e.message ?: "Unknown error")
         } finally {
             workDir.deleteRecursively()
+        }
+    }
+
+    /**
+     * Patche un AndroidManifest.xml binaire (AXML) standalone.
+     *
+     * Différence avec patchApkManifest() :
+     *   - L'entrée est un fichier .xml (AXML binaire), pas un .apk
+     *   - Pas d'extraction depuis un ZIP, pas de reconstruction d'APK
+     *   - La sortie est un AndroidManifest.xml binaire patché
+     *
+     * Flux :
+     *   1. Decode AXML → XML texte
+     *   2. Sanitize (ManifestSanitizer)
+     *   3. Re-encode XML → AXML binaire
+     */
+    fun patchStandaloneManifest(
+        inputXml:    File,
+        outputXml:   File,
+        logCallback: (String) -> Unit = {}
+    ): PatchResult {
+        return try {
+            logCallback("Step 1: Decoding AXML → XML…")
+            val xmlString = decodeManifestToString(inputXml)
+                ?: return PatchResult.Error("Failed to decode AXML — is this a valid binary AndroidManifest.xml?")
+
+            logCallback("Step 2: Patching…")
+            // Pass 'context' since ManifestSanitizer.sanitize now requires it
+            val cleanedXml = ManifestSanitizer.sanitize(context, xmlString, logCallback)
+
+            logCallback("Step 3: Encoding XML → AXML…")
+            if (!encodeStringToAxml(cleanedXml, outputXml)) {
+                return PatchResult.Error("Failed to re-encode XML to AXML")
+            }
+
+            logCallback("Done.")
+            PatchResult.Success(
+                outputXml,
+                PatchStats(
+                    removedComponents  = 0,
+                    neutralizedConfigs = 0,
+                    manifestInputSize  = inputXml.length(),
+                    manifestOutputSize = outputXml.length()
+                )
+            )
+        } catch (e: Exception) {
+            logCallback("Error: ${e.message}")
+            PatchResult.Error("Error: ${e.message}")
         }
     }
 }

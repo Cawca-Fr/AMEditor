@@ -1,7 +1,6 @@
 package com.cawcafr.ameditor
 
-import android.app.Activity
-import android.app.AlertDialog
+import androidx.appcompat.app.AlertDialog
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.ComponentName
@@ -21,12 +20,16 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.*
 import android.content.Intent
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.content.IntentCompat
 import androidx.core.content.IntentSanitizer
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.updatePadding
 import androidx.core.view.WindowInsetsControllerCompat
 import com.cawcafr.ameditor.util.SignerUtils
 import com.cawcafr.ameditor.util.CustomPatchData
@@ -61,14 +64,14 @@ class MainActivity : AppCompatActivity() {
 
     // Nouvelles vues
     private lateinit var apkInfoBar: View
-    private lateinit var apkNameText: TextView          // NEW — shows file name
+    private lateinit var apkNameText: TextView          // shows file name
     private lateinit var apkSizeText: TextView
     private lateinit var apkOutputSizeLabel: TextView
     private lateinit var apkOutputSizeText: TextView
     private lateinit var manifestSizeText: TextView
     private lateinit var manifestOutputSizeLabel: TextView
     private lateinit var manifestOutputSizeText: TextView
-    private lateinit var signatureStatusDot: View       // NEW — red/green dot
+    private lateinit var signatureStatusDot: View       // red/green dot
     private lateinit var signatureBadge: TextView
     private lateinit var progressContainer: View
     private lateinit var processProgressBar: ProgressBar
@@ -93,6 +96,9 @@ class MainActivity : AppCompatActivity() {
     private var userPk8File: File? = null
     private var userPemFile: File? = null
     private var isUsingPk8Mode = false
+    private var lastBackPressTime = 0L
+    private var isXmlMode = false   // true quand l'entrée est un .xml, pas un .apk
+
 
     // ── Logs ──────────────────────────────────────────────────────────────────
     /** Vrai tant que le placeholder gris "Output Logs" est affiché. */
@@ -162,7 +168,10 @@ class MainActivity : AppCompatActivity() {
         if (uri == null) return@registerForActivityResult
 
         originalFileName = getFileName(uri) ?: "app.apk"
-        val copiedFile   = File(cacheDir, "selected_internal.apk")
+        val isXml = originalFileName.endsWith(".xml", ignoreCase = true)
+
+        val destName = if (isXml) "selected_manifest.xml" else "selected_internal.apk"
+        val copiedFile = File(cacheDir, destName)
 
         try {
             copyUriToFile(uri, copiedFile)
@@ -172,18 +181,22 @@ class MainActivity : AppCompatActivity() {
         }
 
         apkFile               = copiedFile
+        isXmlMode             = isXml
         cachedXmlContent      = null
         cachedManifestBinarySize = -1L
         XmlContentHolder.clear()
 
-        // ── Affiche le bandeau taille APK ──────────────────────────────────
         showApkSizeBar(copiedFile.length())
-
         setApkDependentButtonsEnabled(true)
 
         clearLogs()
-        appendLog(getString(R.string.log_apk_selected, originalFileName))
-        appendLog(getString(R.string.log_apk_size, formatFileSize(copiedFile.length())))
+        if (isXml) {
+            appendLog("📦 Manifest selected: $originalFileName")
+            appendLog("💾 Size: ${formatFileSize(copiedFile.length())}")
+        } else {
+            appendLog(getString(R.string.log_apk_selected, originalFileName))
+            appendLog(getString(R.string.log_apk_size, formatFileSize(copiedFile.length())))
+        }
 
         startManifestImport()
     }
@@ -191,7 +204,7 @@ class MainActivity : AppCompatActivity() {
     private val customPatchLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        if (result.resultCode == Activity.RESULT_OK) {
+        if (result.resultCode == RESULT_OK) {
             val data = result.data?.let { intent ->
                 IntentCompat.getSerializableExtra(intent, "PATCH_DATA", CustomPatchData::class.java)
             }
@@ -205,6 +218,16 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { view, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.updatePadding(
+                left = systemBars.left,
+                top = systemBars.top,
+                right = systemBars.right,
+                bottom = systemBars.bottom
+            )
+            insets
+        }
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
 
         setContentView(R.layout.activity_main)
@@ -245,7 +268,8 @@ class MainActivity : AppCompatActivity() {
 
         // ── Listeners ──────────────────────────────────────────────────────
         selectApkButton.setOnClickListener {
-            pickApkLauncher.launch("application/vnd.android.package-archive")
+            // Accepte .apk ET .xml (AndroidManifest.xml standalone)
+            pickApkLauncher.launch("*/*")
         }
 
         previewButton.setOnClickListener {
@@ -271,7 +295,7 @@ class MainActivity : AppCompatActivity() {
             val isKeystoreReady = (!isUsingPk8Mode && userKeystoreFile != null)
             val isPk8Ready      = (isUsingPk8Mode && userPk8File != null && userPemFile != null)
 
-            if (signCheckBox.isChecked && !isKeystoreReady && !isPk8Ready) {
+            if (!isXmlMode && signCheckBox.isChecked && !isKeystoreReady && !isPk8Ready) {
                 Toast.makeText(this, getString(R.string.error_import_signature), Toast.LENGTH_SHORT).show()
                 return@setOnClickListener
             }
@@ -280,21 +304,37 @@ class MainActivity : AppCompatActivity() {
             appendLog(getString(R.string.log_starting_process, originalFileName))
             setProcessing(true, getString(R.string.log_extracting_manifest))
 
-            val shouldSign = signCheckBox.isChecked
+            // FIX: Use .post call on logScrollView to wait for layout pass before scrolling
+            logScrollView.post {
+                scrollToLogs()
+            }
+
+            val shouldSign = !isXmlMode && signCheckBox.isChecked
 
             Thread {
                 try {
-                    val patcher    = ApkManifestPatcher(this)
-                    val unsignedApk = File(cacheDir, "unsigned_mod.apk")
+                    if (isXmlMode) {
+                        // ── Mode XML standalone ────────────────────────────────
+                        // Entrée = AndroidManifest.xml binaire (AXML)
+                        // Sortie = AndroidManifest.xml patché
+                        val outputXml = File(cacheDir, "patched_manifest.xml")
+                        val result = ApkManifestPatcher(this).patchStandaloneManifest(
+                            apkFile!!, outputXml
+                        ) { msg -> runOnUiThread { appendLog(msg.trim()) } }
 
-                    val result = patcher.patchApkManifest(apkFile!!, unsignedApk) { msg ->
-                        runOnUiThread {
-                            appendLog(msg.trim())
-                            // Met à jour le label de progression selon le step
-                            if (msg.contains("Step")) updateProgressLabel(msg.trim())
+                        handleXmlPatchResult(result, outputXml)
+                    } else {
+                        // ── Mode APK (comportement existant) ──────────────────
+                        val patcher     = ApkManifestPatcher(this)
+                        val unsignedApk = File(cacheDir, "unsigned_mod.apk")
+                        val result = patcher.patchApkManifest(apkFile!!, unsignedApk) { msg ->
+                            runOnUiThread {
+                                appendLog(msg.trim())
+                                if (msg.contains("Step")) updateProgressLabel(msg.trim())
+                            }
                         }
+                        handlePatchResult(result, unsignedApk, shouldSign)
                     }
-                    handlePatchResult(result, unsignedApk, shouldSign)
                 } catch (e: Exception) {
                     runOnUiThread {
                         appendLog("❌ ${getString(R.string.log_crash, e.message)}")
@@ -304,6 +344,21 @@ class MainActivity : AppCompatActivity() {
                 }
             }.start()
         }
+
+        // OnBackPressedDispatcher migration
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val now = System.currentTimeMillis()
+                if (now - lastBackPressTime < 2000) {
+                    // Deuxième appui dans les 2 secondes → quitter
+                    isEnabled = false // Disable this callback to allow standard back behavior
+                    onBackPressedDispatcher.onBackPressed()
+                } else {
+                    lastBackPressTime = now
+                    Toast.makeText(this@MainActivity, getString(R.string.toast_press_back_again), Toast.LENGTH_SHORT).show()
+                }
+            }
+        })
     }
 
     // ══════════════════════════════════════════════════════════════════════════
@@ -311,7 +366,7 @@ class MainActivity : AppCompatActivity() {
     // ══════════════════════════════════════════════════════════════════════════
 
     private fun showApkSizeBar(sizeBytes: Long) {
-        apkNameText.text = originalFileName          // ← NEW: show file name
+        apkNameText.text = originalFileName
         apkSizeText.text = formatFileSize(sizeBytes)
         apkOutputSizeLabel.visibility      = View.GONE
         apkOutputSizeText.visibility       = View.GONE
@@ -353,17 +408,17 @@ class MainActivity : AppCompatActivity() {
                 else getString(R.string.signature_ready_pkcs12_no_alias)
                 signatureBadge.text = label
                 signatureBadge.setTextColor("#16A34A".toColorInt())
-                signatureStatusDot.background = ContextCompat.getDrawable(this, R.drawable.status_dot_green)  // ← NEW
+                signatureStatusDot.background = ContextCompat.getDrawable(this, R.drawable.status_dot_green)
             }
             "pk8" -> {
                 signatureBadge.text = getString(R.string.signature_ready_pk8)
                 signatureBadge.setTextColor("#16A34A".toColorInt())
-                signatureStatusDot.background = ContextCompat.getDrawable(this, R.drawable.status_dot_green)  // ← NEW
+                signatureStatusDot.background = ContextCompat.getDrawable(this, R.drawable.status_dot_green)
             }
             else -> {
                 signatureBadge.text = getString(R.string.signature_no_key)
                 signatureBadge.setTextColor("#9CA3AF".toColorInt())
-                signatureStatusDot.background = ContextCompat.getDrawable(this, R.drawable.status_dot_red)    // ← NEW
+                signatureStatusDot.background = ContextCompat.getDrawable(this, R.drawable.status_dot_red)
             }
         }
     }
@@ -405,7 +460,6 @@ class MainActivity : AppCompatActivity() {
             isLogPlaceholderVisible = false
         }
 
-        val ssb  = SpannableStringBuilder()
         val text = logTextView.text as? SpannableStringBuilder ?: SpannableStringBuilder(logTextView.text)
 
         // Timestamp gris
@@ -443,6 +497,32 @@ class MainActivity : AppCompatActivity() {
         // Met à jour le compteur de lignes + montre les boutons
         logLineCounter++
         updateLogHeader()
+    }
+
+    /**
+     * Gère le résultat d'un patch de manifest standalone (.xml → .xml).
+     * Propose de sauvegarder le fichier patché avec un nom clair.
+     */
+    private fun handleXmlPatchResult(result: PatchResult, outputXml: File) {
+        when (result) {
+            is PatchResult.Success -> {
+                lastRebuiltApk = outputXml   // réutilise le launcher d'enregistrement
+                runOnUiThread {
+                    updateManifestOutputSize(outputXml.length())
+                    appendLog("🎉 SUCCESS! Patched manifest: ${formatFileSize(outputXml.length())}")
+                    setProcessing(false)
+                    // Sauvegarde avec un nom explicite
+                    val outName = "PATCHED_${originalFileName}"
+                    saveApkLauncher.launch(outName)
+                }
+            }
+            is PatchResult.Error -> {
+                runOnUiThread {
+                    appendLog("❌ ${getString(R.string.log_failure, result.message)}")
+                    setProcessing(false)
+                }
+            }
+        }
     }
 
     private fun showLogPlaceholder() {
@@ -731,7 +811,7 @@ class MainActivity : AppCompatActivity() {
                     if (alias.isEmpty()) alias = if (aliases.size == 1) aliases[0] else ""
                     if (alias.isEmpty()) throw RuntimeException(if (aliases.isEmpty()) getString(R.string.error_no_aliases) else getString(R.string.error_choose_alias, aliases.joinToString(", ")))
                     if (!ks.containsAlias(alias)) throw RuntimeException(getString(R.string.error_alias_not_found, alias, aliases.joinToString(", ")))
-                    val entry = ks.getEntry(alias, KeyStore.PasswordProtection(keyP.toCharArray())) as? KeyStore.PrivateKeyEntry
+                    ks.getEntry(alias, KeyStore.PasswordProtection(keyP.toCharArray())) as? KeyStore.PrivateKeyEntry
                         ?: throw RuntimeException(getString(R.string.error_cannot_access_key))
                     success = true
                 } catch (e: Exception) {
@@ -762,10 +842,17 @@ class MainActivity : AppCompatActivity() {
     // ══════════════════════════════════════════════════════════════════════════
 
     private fun setApkDependentButtonsEnabled(enabled: Boolean) {
-        previewButton.isEnabled      = enabled
-        customPatchButton.isEnabled  = enabled
+        // En mode XML, Preview et Custom Patch ne sont pas disponibles
+        // (le manifest est déjà le fichier lui-même, sans APK wrapper)
+        previewButton.isEnabled      = enabled && !isXmlMode
+        customPatchButton.isEnabled  = enabled && !isXmlMode
         processButton.isEnabled      = enabled
         if (!enabled) signCheckBox.isEnabled = false
+        // Cacher aussi la signature en mode XML (inutile sans APK)
+        if (isXmlMode) {
+            signCheckBox.isEnabled  = false
+            importKeyButton.isEnabled = false
+        }
     }
 
     private fun formatFileSize(bytes: Long): String = when {
@@ -776,6 +863,19 @@ class MainActivity : AppCompatActivity() {
 
     private fun dpToPx(dp: Int): Int = (dp * resources.displayMetrics.density).toInt()
 
+    private fun scrollToLogs() {
+        val mainScroll = findViewById<androidx.core.widget.NestedScrollView>(R.id.mainNestedScrollView)
+
+        mainScroll.post {
+            // Scroll the main screen to the absolute bottom using fullScroll
+            mainScroll.fullScroll(View.FOCUS_DOWN)
+            
+            // Also scroll the internal log text area smoothly to show movement
+            logScrollView.post {
+                logScrollView.smoothScrollTo(0, logTextView.bottom)
+            }
+        }
+    }
     private fun getFileName(uri: Uri): String? {
         var result: String? = null
         if (uri.scheme == "content") {
@@ -843,8 +943,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyLanguage(langCode: String) {
-        val locale = java.util.Locale.forLanguageTag(langCode)
-        java.util.Locale.setDefault(locale)
+        val locale = Locale.forLanguageTag(langCode)
+        Locale.setDefault(locale)
         val config = android.content.res.Configuration(resources.configuration)
         config.setLocale(locale)
         @Suppress("DEPRECATION")

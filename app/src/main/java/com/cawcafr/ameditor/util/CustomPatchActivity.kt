@@ -28,11 +28,15 @@ import androidx.appcompat.widget.AppCompatEditText
 import androidx.core.graphics.toColorInt
 import androidx.core.text.PrecomputedTextCompat
 import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.ViewCompat
+import androidx.core.view.updatePadding
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.isVisible
 import androidx.core.widget.NestedScrollView
 import androidx.core.widget.TextViewCompat
 import androidx.core.widget.doAfterTextChanged
+import com.google.android.material.appbar.MaterialToolbar
 import com.cawcafr.ameditor.R
 import com.cawcafr.ameditor.XmlContentHolder
 import org.lsposed.lsparanoid.Obfuscate
@@ -127,6 +131,16 @@ class CustomPatchActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        ViewCompat.setOnApplyWindowInsetsListener(findViewById(android.R.id.content)) { view, insets ->
+            val systemBars = insets.getInsets(WindowInsetsCompat.Type.systemBars())
+            view.updatePadding(
+                left = systemBars.left,
+                top = systemBars.top,
+                right = systemBars.right,
+                bottom = systemBars.bottom
+            )
+            insets
+        }
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
         setContentView(R.layout.activity_custom_patch)
         setupToolbar(); setupViews(); setupButtons(); setupTouchListener()
@@ -152,7 +166,7 @@ class CustomPatchActivity : AppCompatActivity() {
     // ════════════════════════════════════════════════════════════════════════
 
     private fun setupToolbar() {
-        val tb = findViewById<androidx.appcompat.widget.Toolbar>(R.id.toolbar)
+        val tb = findViewById<MaterialToolbar>(R.id.toolbar)
         setSupportActionBar(tb)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         supportActionBar?.setDisplayShowTitleEnabled(false)
