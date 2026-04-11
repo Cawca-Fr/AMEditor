@@ -7,7 +7,13 @@
     <string name="process_apk_button_text">Patcher l\'APK</string>
     <string name="select_apk_button_text">Sélectionner APK</string>
 
-    <!-- Autorisations -->
+    <string name="card_title_source">APK Source</string>
+    <string name="card_title_modding">Options de modification</string>
+    <string name="card_title_signature">Signature</string>
+    <string name="label_optional">(Optionnel)</string>
+    <string name="toast_press_back_again">Appuyez à nouveau sur retour pour quitter</string>
+
+    <!-- Permissions -->
     <string name="permission_manage_storage_granted">Autorisation d\'accès à tous les fichiers accordée.</string>
     <string name="permission_manage_storage_denied_long">L\'autorisation d\'accéder à tous les fichiers est nécessaire pour certaines fonctionnalités avancées. L\'application continuera avec des fonctionnalités limitées.</string>
     <string name="permission_legacy_storage_granted">Autorisations de stockage héritées accordées.</string>
@@ -18,7 +24,8 @@
     <string name="error_copying_apk_to_cache_detail">Erreur lors de la copie de l\'APK vers le cache : %1$s</string>
     <string name="error_copying_apk_to_cache_generic">Erreur générique lors de la copie de l\'APK : %1$s</string>
 
-    <!-- Script Python (Traceurs / OneSignal) -->
+
+    <!-- Script Python -->
     <string name="log_python_call_details_kotlin">Appel de process_apk avec :\nEntrée (cache) : %1$s\nSortie (cache temp) : %2$s</string>
     <string name="python_processing_complete_details">Traitement Python terminé !\n  OneSignal trouvé : %1$d\n  Traceurs trouvés : %2$d\n  Intents modifiés : %3$d</string>
     <string name="prompt_save_location">Veuillez choisir où enregistrer l\'APK modifié.</string>
@@ -33,6 +40,7 @@
     <string name="error_saving_temp_file_missing">Fichier temporaire à enregistrer introuvable.</string>
     <string name="apk_saved_successfully_at">APK modifié enregistré avec succès sous : %1$s</string>
     <string name="apk_saved_successfully">APK modifié enregistré !</string>
+    <string name="error_reading_manifest">Erreur lors de la lecture du manifest : %1$s</string>
     <string name="error_saving_apk">Erreur lors de l\'enregistrement de l\'APK : %1$s</string>
     <string name="error_saving_apk_short">Erreur d\'enregistrement</string>
     <string name="error_copying_apk">Une erreur s\'est produite lors de la copie du fichier apk</string>
@@ -41,14 +49,14 @@
     <!-- Logs MainActivity -->
     <string name="log_header">--- Logs ---\n</string>
     <string name="log_starting_patch">Début du traitement de %1$s…\n</string>
-    <string name="log_apk_selected">APK sélectionné : %1$s</string>
+    <string name="log_apk_selected">📦 APK sélectionné : %1$s</string>
     <string name="log_apk_saved_success">✅ APK enregistré avec succès !</string>
     <string name="log_error_saving_apk">❌ Erreur d\'enregistrement : %1$s</string>
     <string name="log_save_cancelled">Enregistrement annulé par l\'utilisateur.\n</string>
     <string name="log_no_file_selected">Aucun fichier sélectionné\n</string>
     <string name="log_success_total">SUCCÈS TOTAL !\n</string>
-    <string name="log_failure">ÉCHEC : %1$s</string>
-    <string name="log_crash">Crash : %1$s</string>
+    <string name="log_failure">❌ ÉCHEC : %1$s</string>
+    <string name="log_crash">❌ Crash : %1$s</string>
     <string name="sign_apk">Signer l\'APK</string>
     <string name="import_signature">Importer Signature</string>
     <string name="info_icon">Info</string>
@@ -164,16 +172,30 @@
     <string name="btn_close">Fermer</string>
     <string name="dialog_credits_title">Crédits</string>
     <string name="dialog_credits_msg">Développeur - Cawca-Fr\nSupport langue anglaise - Cawca-Fr\nSupport langue française - Cawca-Fr</string>
-    <string name="dialog_ressources_title">⭐  Ressources</string>
-    <string name="dialog_ressources_msg">AMEditor\nBibliothèques open source utilisées :\n\n• apk-axml  — Codec XML binaire\n  (décodage / encodage AXML)\n\n• apksig (Google)  — Signature APK\n  Signatures V1 / V2 / V3\n\n• AndroidX / Material Components\n  (Google)\n\nDéveloppé avec ❤️ en Kotlin</string>
+    <string name="dialog_ressources_title">Ressources</string>
+    <string name="dialog_ressources_msg">AMEditor\n\nOpen source libraries used:\n\n• apk-axml  — Binary XML codec\n  (AXML decode / encode)\n\n• apksig (Google)  — APK signing\n  V1 / V2 / V3 signatures\n\n• AndroidX / Material Components\n  (Google)\n\nBuilt with ❤️ using Kotlin</string>
     <string name="dialog_changelog_title">Notes de version</string>
     <string name="dialog_changelog_msg">v1.0\n• Version initiale\n• Patch de l\'AndroidManifest.xml\n• Éditeur de patch personnalisé\n• Aperçu du manifest\n• Signature de l\'apk de sortie</string>
+
+    <string name="log_manifest_selected">📦 Manifest sélectionné : %1$s</string>
+    <string name="log_manifest_size">💾 Taille : %1$s</string>
+    <string name="log_patched_manifest_success">🎉 SUCCÈS ! Manifest patché : %1$s</string>
+    <string name="log_clipboard_label">Logs AMEditor</string>
+    <string name="lang_english">🇺🇸 Anglais</string>
+    <string name="lang_french">🇫🇷 Français</string>
+    <string name="lang_russian">🇷🇺 Russe</string>
+    <string name="lang_hindi">🇮🇳 Hindi</string>
+    <string name="loading_ellipsis">…</string>
+    <string name="prefix_patched">PATCHED_</string>
+    <string name="prefix_signed">SIGNED_</string>
+    <string name="default_apk_name">app.apk</string>
 
     <!-- Formats de taille de fichier -->
     <string name="format_mb">%.1f Mo</string>
     <string name="format_kb">%.1f Ko</string>
     <string name="format_b">%1$d o</string>
     <string name="error_failed_general">Échec : %1$s</string>
+    <string name="error_unknown">Erreur inconnue</string>
 
     <!-- Chaînes de mise en page -->
     <string name="label_apk_prefix">APK : </string>
@@ -190,7 +212,7 @@
     <string name="desc_copy_logs">Copier les logs</string>
     <string name="desc_clear_logs">Effacer les logs</string>
     <string name="label_loading">Chargement…</string>
-    <string name="menu_language">🌐  Langue</string>
+    <string name="menu_language">Langue  🌐</string>
     <string name="menu_changelog">Notes de version</string>
     <string name="menu_faq">FAQ</string>
     <string name="menu_contact">Contact</string>
@@ -198,6 +220,7 @@
     <string name="menu_credits">Crédits</string>
     <string name="menu_search">Rechercher</string>
     <string name="menu_copy_xml">Copier XML</string>
+    <string name="menu_word_wrap">Retour à la ligne</string>
 
     <!-- Dialogue d'importation -->
     <string name="dialog_import_title">Importation de l\'APK</string>

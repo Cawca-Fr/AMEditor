@@ -48,8 +48,8 @@
     <!-- Logs MainActivity -->
     <string name="log_header">--- Logs ---\n</string>
     <string name="log_starting_patch">Starting processing of %1$s…\n</string>
-    <string name="log_apk_selected">APK selected: %1$s</string>
-    <string name="log_apk_saved_success">APK saved successfully!</string>
+    <string name="log_apk_selected">📦 APK selected: %1$s</string>
+    <string name="log_apk_saved_success">✅ APK saved successfully!</string>
     <string name="log_error_saving_apk">❌ Save error: %1$s</string>
     <string name="log_save_cancelled">Save cancelled by user.\n</string>
     <string name="log_no_file_selected">No file selected\n</string>
@@ -176,11 +176,26 @@
     <string name="dialog_changelog_title">Changelog</string>
     <string name="dialog_changelog_msg">v1.0\n• Initial release\n• AndroidManifest.xml patching\n• Custom patch editor\n• Manifest preview\n• Sign output apk</string>
 
+    <string name="log_manifest_selected">📦 Manifest selected: %1$s</string>
+    <string name="log_manifest_size">💾 Size: %1$s</string>
+    <string name="log_patched_manifest_success">🎉 SUCCESS! Patched manifest: %1$s</string>
+    <string name="log_clipboard_label">AMEditor logs</string>
+    <string name="lang_english">🇺🇸 English</string>
+    <string name="lang_french">🇫🇷 Français</string>
+    <string name="lang_russian">🇷🇺 Russian</string>
+    <string name="lang_hindi">🇮🇳 Hindi</string>
+    <string name="loading_ellipsis">…</string>
+    <string name="url_telegram_link" translatable="false">https://t.me/manifestpatcher</string>
+    <string name="prefix_patched">PATCHED_</string>
+    <string name="prefix_signed">SIGNED_</string>
+    <string name="default_apk_name">app.apk</string>
+
     <!-- File Size Formats -->
     <string name="format_mb">%.1f MB</string>
     <string name="format_kb">%.1f KB</string>
     <string name="format_b">%1$d B</string>
     <string name="error_failed_general">Failed: %1$s</string>
+    <string name="error_unknown">Unknown error</string>
 
     <!-- Layout strings -->
     <string name="label_apk_prefix">APK: </string>
@@ -205,6 +220,7 @@
     <string name="menu_credits">Credits</string>
     <string name="menu_search">Search</string>
     <string name="menu_copy_xml">Copy XML</string>
+    <string name="menu_word_wrap">Word wrap</string>
 
     <!-- Importing Dialog -->
     <string name="dialog_import_title">Importing APK</string>

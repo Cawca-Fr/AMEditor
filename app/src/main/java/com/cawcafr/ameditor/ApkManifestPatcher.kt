@@ -168,7 +168,7 @@ class ApkManifestPatcher(private val context: Context) {
                 PatchStats(1, 1, manifestInputSize, manifestOutputSize)
             )
         } catch (e: Exception) {
-            return PatchResult.Error(e.message ?: "Unknown error")
+            return PatchResult.Error(e.message ?: context.getString(R.string.error_unknown))
         } finally {
             workDir.deleteRecursively()
         }
@@ -217,8 +217,9 @@ class ApkManifestPatcher(private val context: Context) {
                 )
             )
         } catch (e: Exception) {
-            logCallback("Error: ${e.message}")
-            PatchResult.Error("Error: ${e.message}")
+            val err = e.message ?: context.getString(R.string.error_unknown)
+            logCallback(context.getString(R.string.log_failure, err))
+            PatchResult.Error(err)
         }
     }
 }

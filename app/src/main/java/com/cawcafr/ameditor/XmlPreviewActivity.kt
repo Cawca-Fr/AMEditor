@@ -122,6 +122,9 @@ class XmlPreviewActivity : AppCompatActivity() {
     private var selectionSpan: BackgroundColorSpan? = null
     private val COLOR_SELECTION    = 0x554FC3F7.toInt()
 
+    private var lastBackPressTime = 0L
+    private var isWordWrapEnabled = false
+
     // ════════════════════════════════════════════════════════════════════════
     // Lifecycle
     // ════════════════════════════════════════════════════════════════════════
@@ -142,6 +145,21 @@ class XmlPreviewActivity : AppCompatActivity() {
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
         setContentView(R.layout.activity_xml_preview)
         setupToolbar(); setupViews(); setupScrollbar(); setupSearch()
+
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastBackPressTime < 2000) {
+                    finish()
+                } else {
+                    lastBackPressTime = currentTime
+                    Toast.makeText(this@XmlPreviewActivity, getString(R.string.toast_press_back_again), Toast.LENGTH_SHORT).show()
+                }
+            }
+        })
+
+        // Initial setup for word wrap
+        applyWordWrap()
 
         xmlContent = XmlContentHolder.get() ?: intent.getStringExtra("XML_CONTENT") ?: ""
         if (xmlContent.isEmpty()) { codeTextView.text = getString(R.string.error_no_content); return }
@@ -914,10 +932,14 @@ class XmlPreviewActivity : AppCompatActivity() {
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
         menu?.apply {
-            add(Menu.NONE, MENU_SEARCH, Menu.NONE, "Search")
+            add(Menu.NONE, MENU_SEARCH, Menu.NONE, getString(R.string.menu_search))
                 .setIcon(android.R.drawable.ic_menu_search)
                 .setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
-            add(Menu.NONE, MENU_COPY, Menu.NONE, "Copy XML")
+            add(Menu.NONE, MENU_COPY, Menu.NONE, getString(R.string.menu_copy_xml))
+                .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
+            add(Menu.NONE, MENU_WORD_WRAP, Menu.NONE, getString(R.string.menu_word_wrap))
+                .setCheckable(true)
+                .setChecked(isWordWrapEnabled)
                 .setShowAsAction(MenuItem.SHOW_AS_ACTION_NEVER)
         }
         return true
@@ -929,13 +951,60 @@ class XmlPreviewActivity : AppCompatActivity() {
         MENU_COPY   -> {
             val cb = getSystemService(ClipboardManager::class.java)
             cb.setPrimaryClip(ClipData.newPlainText("AndroidManifest.xml", xmlContent))
-            Toast.makeText(this, "XML copied to clipboard", Toast.LENGTH_SHORT).show(); true
+            Toast.makeText(this, getString(R.string.toast_xml_copied), Toast.LENGTH_SHORT).show(); true
+        }
+        MENU_WORD_WRAP -> {
+            isWordWrapEnabled = !isWordWrapEnabled
+            item.isChecked = isWordWrapEnabled
+            applyWordWrap()
+            true
         }
         else -> super.onOptionsItemSelected(item)
+    }
+
+    private fun applyWordWrap() {
+        // ── POURQUOI L'ANCIEN CODE NE FONCTIONNAIT PAS ────────────────────────
+        // HorizontalScrollView mesure toujours ses enfants avec
+        // MeasureSpec.UNSPECIFIED (largeur infinie). Donc assigner
+        // layoutParams.width = uneValeurFixe est silencieusement ignoré —
+        // l'enfant reçoit toujours un espace horizontal infini et ne
+        // revient jamais à la ligne.
+        //
+        // CORRECTION : maxWidth est respecté même dans un HorizontalScrollView
+        // car il est appliqué à l'intérieur de TextView.onMeasure() AVANT que
+        // la contrainte du parent soit prise en compte. En fixant maxWidth à la
+        // largeur visible du NestedScrollView, le texte revient à la ligne
+        // immédiatement dès le clic.
+        // ─────────────────────────────────────────────────────────────────────
+
+        if (isWordWrapEnabled) {
+            codeTextView.setHorizontallyScrolling(false)
+
+            val visibleWidth = xmlScrollView.width
+            if (visibleWidth > 0) {
+                // La largeur est déjà connue → appliquer immédiatement
+                codeTextView.maxWidth = visibleWidth
+                codeTextView.requestLayout()
+                xmlScrollView.post { updateViewportSpans() }
+            } else {
+                // Premier appel depuis onCreate avant le premier layout
+                xmlScrollView.post {
+                    codeTextView.maxWidth = xmlScrollView.width
+                    codeTextView.requestLayout()
+                    updateViewportSpans()
+                }
+            }
+        } else {
+            codeTextView.setHorizontallyScrolling(true)
+            codeTextView.maxWidth = Int.MAX_VALUE   // sans restriction
+            codeTextView.requestLayout()
+            xmlScrollView.post { updateViewportSpans() }
+        }
     }
 
     companion object {
         private const val MENU_SEARCH = 1001
         private const val MENU_COPY   = 1002
+        private const val MENU_WORD_WRAP = 1003
     }
 }

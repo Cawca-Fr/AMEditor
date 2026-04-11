@@ -1,0 +1,241 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name" translatable="false">Manifest Patcher</string>
+    <string name="selected_apk_message">Выбранный APK: %1$s</string>
+    <string name="processing_started">Начало патча…\nПожалуйста, подождите завершения процесса.</string>
+    <string name="select_apk_first">Пожалуйста, сначала выберите APK-файл.</string>
+    <string name="process_apk_button_text" translatable="false">Patch XML</string>
+    <string name="select_apk_button_text" translatable="false">Select APK</string>
+
+    <string name="card_title_source">Исходный APK</string>
+    <string name="card_title_modding">Опции моддинга</string>
+    <string name="card_title_signature">Подпись</string>
+    <string name="label_optional">(Опционально)</string>
+    <string name="toast_press_back_again">Нажмите «Назад» еще раз, чтобы выйти</string>
+
+    <!-- Permissions -->
+    <string name="permission_manage_storage_granted">Разрешение на доступ ко всем файлам предоставлено.</string>
+    <string name="permission_manage_storage_denied_long">Разрешение на доступ ко всем файлам необходимо для некоторых расширенных функций. Приложение продолжит работу с ограниченным функционалом.</string>
+    <string name="permission_legacy_storage_granted">Разрешения на хранение данных предоставлены.</string>
+    <string name="permission_legacy_storage_denied">Разрешения на хранение данных требуются для старых версий Android.</string>
+
+    <!-- Copie en cache -->
+    <string name="error_copying_apk_to_cache">Ошибка копирования APK в кэш.</string>
+    <string name="error_copying_apk_to_cache_detail">Ошибка копирования APK в кэш: %1$s</string>
+    <string name="error_copying_apk_to_cache_generic">Общая ошибка при копировании APK: %1$s</string>
+
+    <!-- Script Python -->
+    <string name="log_python_call_details_kotlin">Вызов process_apk с параметрами:\nВход (кэш): %1$s\nВыход (врем. кэш): %2$s</string>
+    <string name="python_processing_complete_details">Обработка Python завершена!\n  OneSignal найдено: %1$d\n  Трекеров найдено: %2$d\n  Интентов изменено: %3$d</string>
+    <string name="prompt_save_location">Пожалуйста, выберите место для сохранения измененного APK.</string>
+    <string name="python_script_unknown_error">Неизвестная ошибка скрипта Python или неожиданный результат.</string>
+    <string name="python_script_error">Ошибка Python во время патча: %1$s</string>
+    <string name="python_error_exception">Ошибка выполнения Python: %1$s</string>
+    <string name="generic_error_exception">Ошибка выполнения: %1$s</string>
+    <string name="permission_manage_storage_needed_for_save">Необходимо разрешение на управление хранилищем</string>
+    <string name="manual_permission_grant_needed_manage_storage">Необходимо вручную предоставить разрешение на управление хранилищем</string>
+
+    <!-- Sauvegarde SAF -->
+    <string name="error_saving_temp_file_missing">Временный файл для сохранения не найден.</string>
+    <string name="apk_saved_successfully_at">Измененный APK успешно сохранен в: %1$s</string>
+    <string name="apk_saved_successfully">Измененный APK сохранен!</string>
+    <string name="error_reading_manifest">Ошибка чтения манифеста: %1$s</string>
+    <string name="error_saving_apk">Ошибка при сохранении APK: %1$s</string>
+    <string name="error_saving_apk_short">Ошибка сохранения</string>
+    <string name="error_copying_apk" translatable="false">An error occured while copying the apk file</string>
+    <string name="Output">outputlogs</string>
+
+    <!-- Logs MainActivity -->
+    <string name="log_header">--- Логи ---\n</string>
+    <string name="log_starting_patch">Начало обработки %1$s…\n</string>
+    <string name="log_apk_selected">📦 Выбран APK: %1$s</string>
+    <string name="log_apk_saved_success">✅ APK успешно сохранен!</string>
+    <string name="log_error_saving_apk">❌ Ошибка сохранения: %1$s</string>
+    <string name="log_save_cancelled">Сохранение отменено пользователем.\n</string>
+    <string name="log_no_file_selected">Файл не выбран\n</string>
+    <string name="log_success_total">ПОЛНЫЙ УСПЕХ!\n</string>
+    <string name="log_failure">❌ ОШИБКА: %1$s</string>
+    <string name="log_crash">❌ Сбой: %1$s</string>
+    <string name="sign_apk">Подписать APK</string>
+    <string name="import_signature">Импорт подписи</string>
+    <string name="info_icon">Инфо</string>
+
+    <!-- New Strings -->
+    <string name="log_placeholder">Логи вывода</string>
+    <string name="signature_ready_pk8">🔑 PK8 / PEM готов</string>
+    <string name="signature_ready_pkcs12">🔑 PKCS12 готов · %1$s</string>
+    <string name="signature_ready_pkcs12_no_alias">🔑 PKCS12 готов</string>
+    <string name="signature_no_key">🔒 Ключ не импортирован</string>
+    <string name="button_pk8_pem_ready">PK8/PEM ✅</string>
+    <string name="button_signature_ready">Подпись ✅</string>
+    <string name="log_line_count">%1$d строк</string>
+    <string name="error_no_content">Ошибка: контент не получен.</string>
+    <string name="search_count">%1$d / %2$d</string>
+
+    <!-- CustomPatchActivity Strings -->
+    <string name="error_no_xml_received">XML-контент не получен</string>
+    <string name="toast_undo">Отменить</string>
+    <string name="toast_redo">Повторить</string>
+    <string name="toast_nothing_to_reset">Нечего сбрасывать</string>
+    <string name="dialog_reset_title">Сбросить выбор</string>
+    <string name="dialog_reset_message">Очистить все выбранные элементы?</string>
+    <string name="btn_reset">Сброс</string>
+    <string name="btn_cancel">Отмена</string>
+    <string name="error_select_mode_first">Сначала выберите режим (🔴 или 🟡)</string>
+    <string name="dialog_bulk_select_title">Массовый выбор: &lt;%1$s&gt;</string>
+    <string name="dialog_bulk_deselect_msg">Снять выделение со всех %1$d &lt;%2$s&gt;?</string>
+    <string name="dialog_bulk_select_msg">Применить \'%1$s\' ко всем %2$d &lt;%3$s&gt;?</string>
+    <string name="btn_deselect_all">Снять все</string>
+    <string name="btn_select_all">Выбрать все</string>
+    <string name="mode_delete">удалить</string>
+    <string name="mode_deactivate">деактивировать</string>
+    <string name="toast_marked_deletion">Помечено для удаления</string>
+    <string name="toast_marked_deactivation">Помечено для деактивации</string>
+    <string name="toast_deselected">Выделение снято</string>
+    <string name="toast_bulk_result">%1$s: %2$d &lt;%3$s&gt;</string>
+    <string name="btn_delete_label">🔴  Удалить</string>
+    <string name="btn_deactivate_label">🟡  Деактивировать</string>
+    <string name="btn_delete_count_label">🔴  Удалить  ·  %1$d</string>
+    <string name="btn_deactivate_count_label">🟡  Деактивировать  ·  %1$d</string>
+    <string name="error_no_elements_selected">Элементы не выбраны</string>
+    <string name="dialog_summary_title">Итоги патча</string>
+    <string name="label_to_delete">🔴  УДАЛИТЬ  (%1$d)</string>
+    <string name="label_to_disable">🟡  ОТКЛЮЧИТЬ  (%1$d)</string>
+    <string name="btn_apply_now">Применить сейчас</string>
+    <string name="btn_keep_editing">Продолжить правку</string>
+    <string name="menu_undo">Отменить</string>
+    <string name="menu_redo">Повторить</string>
+    <string name="menu_summary">Сводка</string>
+    <string name="menu_reset">Сбросить всё</string>
+    <string name="menu_apply">Применить</string>
+
+    <!-- ManifestSanitizer / Patcher Strings -->
+    <string name="log_step_extract_manifest">Шаг 1: Извлечение AndroidManifest.xml…</string>
+    <string name="log_step_decode_manifest">Шаг 2: Декодирование: AXML -> XML…</string>
+    <string name="log_step_patching">Шаг 3: Патчинг…</string>
+    <string name="log_step_encode_manifest">Шаг 4: Кодирование: XML -> AXML…</string>
+    <string name="log_step_rebuild_apk">Шаг 5: Пересборка APK…</string>
+    <string name="log_process_finished">Процесс завершен.</string>
+    <string name="error_manifest_extraction">Ошибка извлечения манифеста</string>
+    <string name="error_decode_failed">Не удалось декодировать AXML</string>
+    <string name="error_encode_failed">Не удалось закодировать XML в AXML</string>
+    <string name="log_patched_successfully">Патч успешно применен!</string>
+    <string name="log_patched_count">Пропатчено: %1$d элементов</string>
+    <string name="log_custom_patch_applied">Применен кастомный патч: %1$d удалено, %2$d отключено.</string>
+    <string name="log_delete_node">Удаление: &lt;%1$s&gt; индекс %2$d (%3$s)</string>
+    <string name="log_disable_node">Отключение: &lt;%1$s&gt; индекс %2$d (%3$s)</string>
+    <string name="log_step_custom_patch">Шаг 3: Применение правил кастомного патча…</string>
+    <string name="error_critical_xml">Критическая ошибка XML: %1$s - %2$s</string>
+    <string name="error_applying_custom_patch">Ошибка при применении кастомного патча: %1$s</string>
+
+    <!-- MainActivity Dialogs and Toasts -->
+    <string name="toast_saved">Сохранено!</string>
+    <string name="error_invalid_cert">Неверный сертификат. Пожалуйста, выберите файл .pem или .x509.pem.</string>
+    <string name="toast_pk8_loaded">Приватный ключ загружен. Теперь выберите сертификат (.pem)</string>
+    <string name="error_unsupported_keystore">Поддерживаются только хранилища PKCS12 (.p12 / .pfx) ИЛИ приватные ключи (.pk8)</string>
+    <string name="error_copy_apk_failed">Не удалось скопировать APK: %1$s</string>
+    <string name="log_apk_size">Размер: %1$s</string>
+    <string name="error_import_signature">Пожалуйста, сначала импортируйте подпись</string>
+    <string name="log_starting_process">⏳ Запуск процесса для %1$s…</string>
+    <string name="log_extracting_manifest">Извлечение манифеста…</string>
+    <string name="log_manifest_ready">✅ Манифест готов — бинарный: %1$s</string>
+    <string name="log_manifest_preload_failed">⚠️ Предварительная загрузка манифеста не удалась: %1$s</string>
+    <string name="log_starting_custom_patch">⏳ Начало кастомного патча…</string>
+    <string name="log_applying_custom_rules">Применение правил кастомного патча…</string>
+    <string name="log_signing_apk">Подпись APK…</string>
+    <string name="log_signing_pk8_pem">🔏 Подпись с помощью PK8 + PEM…</string>
+    <string name="log_signing_pkcs12">🔏 Подпись с помощью хранилища PKCS12…</string>
+    <string name="log_signature_applied">✅ Подпись применена.</string>
+    <string name="log_signature_failed">❌ Ошибка подписи: %1$s. Сохранение без подписи.</string>
+    <string name="log_signature_skipped">ℹ️ Подпись пропущена (выбор пользователя).</string>
+    <string name="log_success_output">🎉 УСПЕХ! Вывод: %1$s</string>
+    <string name="log_reading_manifest">Чтение манифеста…</string>
+    <string name="dialog_reading_manifest_title">Чтение манифеста…</string>
+    <string name="dialog_parsing_axml_msg">Парсинг AXML…</string>
+    <string name="log_raw_key_pair_loaded">🔑 Пара ключей загружена.</string>
+    <string name="toast_key_pair_loaded">Пара ключей загружена!</string>
+    <string name="dialog_supported_formats_title">Поддерживаемые форматы подписей</string>
+    <string name="dialog_supported_formats_msg">✅ PKCS12 (.p12, .pfx)\n✅ Ключи платформы (.pk8 + .pem)\n\n❌ JKS и BKS НЕ поддерживаются.\n\nИспользуйте MT Manager или Ads regex+ для конвертации.</string>
+    <string name="label_password">Пароль</string>
+    <string name="label_alias">Алиас (Псевдоним)</string>
+    <string name="label_alias_password">Пароль алиаса</string>
+    <string name="helper_same_password">Оставьте пустым, если совпадает с паролем хранилища</string>
+    <string name="dialog_import_signature_title">Импорт подписи</string>
+    <string name="error_password_required">Пароль обязателен</string>
+    <string name="error_keystore_load">⚠️ Ошибка хранилища: %1$s</string>
+    <string name="log_signature_loaded">🔑 Подпись загружена (алиас: %1$s)</string>
+    <string name="toast_logs_copied">Логи скопированы в буфер обмена</string>
+    <string name="dialog_faq_title">❓  FAQ</string>
+    <string name="dialog_faq_msg">В: Какие форматы APK поддерживаются?\nО: Любой стандартный APK-файл (.apk).\n\nВ: Какие форматы подписей поддерживаются?\nО: PKCS12 (.p12 / .pfx) и пары ключей платформы (.pk8 + .pem). JKS и BKS не поддерживаются.\n\nВ: Почему размер выходного APK немного отличается?\nО: Оригинальная подпись изменена, а манифест перекодирован и пропатчен.\n\nВ: В чем заключается процесс патчинга?\nО: Файл AndroidManifest.xml будет пропатчен для удаления или отключения трекеров и рекламы.\n\nВ: Приложение показывает «Предварительная загрузка манифеста не удалась». Что это значит?\nО: APK может быть зашифрован или использовать нестандартный формат бинарного XML.</string>
+    <string name="dialog_contact_title">✉️  Контакт</string>
+    <string name="btn_close">Закрыть</string>
+    <string name="dialog_credits_title">⭐  Благодарности</string>
+    <string name="dialog_credits_msg">Разработчик — Cawca-Fr\nПоддержка английского языка — Cawca-Fr\nПоддержка французского языка — Cawca-Fr</string>
+    <string name="dialog_ressources_title">Ресурсы</string>
+    <string name="dialog_ressources_msg">AMEditor\n\nИспользуемые библиотеки с открытым исходным кодом:\n\n• apk-axml — кодек бинарного XML\n  (декодирование / кодирование AXML)\n\n• apksig (Google) — подпись APK\n  V1 / V2 / V3 подписи\n\n• AndroidX / Material Components\n  (Google)\n\nСоздано с ❤️ на Kotlin</string>
+    <string name="dialog_changelog_title">Список изменений</string>
+    <string name="dialog_changelog_msg">v1.0\n• Первый выпуск\n• Патчинг AndroidManifest.xml\n• Редактор кастомных патчей\n• Предпросмотр манифеста\n• Подпись выходного apk</string>
+
+    <string name="log_manifest_selected">📦 Манифест выбран: %1$s</string>
+    <string name="log_manifest_size">💾 Размер: %1$s</string>
+    <string name="log_patched_manifest_success">🎉 УСПЕХ! Пропатченный манифест: %1$s</string>
+    <string name="log_clipboard_label">Логи AMEditor</string>
+    <string name="lang_english">🇺🇸 Английский</string>
+    <string name="lang_french">🇫🇷 Французский</string>
+    <string name="lang_russian">🇷🇺 Русский</string>
+    <string name="lang_hindi">🇮🇳 Хинди (Hindi)</string>
+    <string name="loading_ellipsis">…</string>
+    <string name="url_telegram_link" translatable="false">https://t.me/manifestpatcher</string>
+    <string name="prefix_patched">PATCHED_</string>
+    <string name="prefix_signed">SIGNED_</string>
+    <string name="default_apk_name">app.apk</string>
+
+    <!-- File Size Formats -->
+    <string name="format_mb">%.1f МБ</string>
+    <string name="format_kb">%.1f КБ</string>
+    <string name="format_b">%1$d Б</string>
+    <string name="error_failed_general">Ошибка: %1$s</string>
+    <string name="error_unknown">Неизвестная ошибка</string>
+
+    <!-- Layout strings -->
+    <string name="label_apk_prefix">APK: </string>
+    <string name="label_axml_prefix">AXML: </string>
+    <string name="label_output_prefix">→ Вывод: </string>
+    <string name="btn_preview_xml">Предпросмотр XML</string>
+    <string name="btn_custom_patch">Кастомный патч</string>
+    <string name="label_no_key_locked">🔒 Ключ не импортирован</string>
+    <string name="label_output_title">ВЫВОД</string>
+    <string name="hint_search_xml">Поиск в XML…</string>
+    <string name="desc_prev_result">Предыдущий результат</string>
+    <string name="desc_next_result">Следующий результат</string>
+    <string name="desc_close_search">Закрыть поиск</string>
+    <string name="desc_copy_logs">Копировать логи</string>
+    <string name="desc_clear_logs">Очистить логи</string>
+    <string name="label_loading">Загрузка…</string>
+    <string name="menu_language">Язык  🌐</string>
+    <string name="menu_changelog">Список изменений</string>
+    <string name="menu_faq">FAQ</string>
+    <string name="menu_contact">Контакт</string>
+    <string name="menu_ressources">Ресурсы</string>
+    <string name="menu_credits">Благодарности</string>
+    <string name="menu_search">Поиск</string>
+    <string name="menu_copy_xml">Копировать XML</string>
+    <string name="menu_word_wrap">Перенос строк</string>
+
+    <!-- Importing Dialog -->
+    <string name="dialog_import_title">Импорт APK</string>
+    <string name="dialog_import_subtitle">Чтение AndroidManifest…</string>
+    <string name="dialog_import_note">Вы можете продолжать пользоваться приложением</string>
+
+    <string name="btn_ok">OK</string>
+    <string name="error_no_aliases">Алиасы не найдены.</string>
+    <string name="error_choose_alias">Выберите алиас: %1$s</string>
+    <string name="error_alias_not_found">Алиас \'%1$s\' не найден. Доступно: %2$s</string>
+    <string name="error_cannot_access_key">Нет доступа к ключу: неверный алиас или пароль ключа.</string>
+    <string name="feedback_subject">[AMEditor] Обратная связь</string>
+    <string name="toast_xml_copied">XML скопирован в буфер обмена</string>
+    <string name="label_manifest_filename">AndroidManifest.xml</string>
+    <string name="btn_open_telegram">Открыть Telegram</string>
+    <string name="contact_telegram">Telegram-канал — t.me/manifestpatcher</string>
+
+</resources>

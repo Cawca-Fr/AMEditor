@@ -47,6 +47,7 @@ import java.util.Locale
 import androidx.core.net.toUri
 import androidx.core.graphics.toColorInt
 import org.lsposed.lsparanoid.Obfuscate
+import androidx.core.content.edit
 
 @Obfuscate
 class MainActivity : AppCompatActivity() {
@@ -87,7 +88,7 @@ class MainActivity : AppCompatActivity() {
     private var cachedManifestBinarySize: Long = -1L
     private var importDialog: AlertDialog? = null
     private var lastRebuiltApk: File? = null
-    private var originalFileName: String = "unknown.apk"
+    private var originalFileName: String = ""
 
     private var userKeystoreFile: File? = null
     private var keystorePass: String = ""
@@ -118,11 +119,11 @@ class MainActivity : AppCompatActivity() {
                 contentResolver.openOutputStream(uri)?.use { out ->
                     FileInputStream(lastRebuiltApk!!).use { it.copyTo(out) }
                 }
-                appendLog("✅ ${getString(R.string.log_apk_saved_success).trim()}")
+                appendLog(getString(R.string.log_apk_saved_success))
                 Toast.makeText(this, getString(R.string.toast_saved), Toast.LENGTH_SHORT).show()
                 lastRebuiltApk?.delete()
             } catch (e: Exception) {
-                appendLog("❌ ${getString(R.string.log_error_saving_apk, e.message)}")
+                appendLog(getString(R.string.log_error_saving_apk, e.message ?: getString(R.string.error_unknown)))
             }
         }
     }
@@ -167,7 +168,7 @@ class MainActivity : AppCompatActivity() {
     private val pickApkLauncher = registerForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         if (uri == null) return@registerForActivityResult
 
-        originalFileName = getFileName(uri) ?: "app.apk"
+        originalFileName = getFileName(uri) ?: getString(R.string.default_apk_name)
         val isXml = originalFileName.endsWith(".xml", ignoreCase = true)
 
         val destName = if (isXml) "selected_manifest.xml" else "selected_internal.apk"
@@ -191,8 +192,8 @@ class MainActivity : AppCompatActivity() {
 
         clearLogs()
         if (isXml) {
-            appendLog("📦 Manifest selected: $originalFileName")
-            appendLog("💾 Size: ${formatFileSize(copiedFile.length())}")
+            appendLog(getString(R.string.log_manifest_selected, originalFileName))
+            appendLog(getString(R.string.log_manifest_size, formatFileSize(copiedFile.length())))
         } else {
             appendLog(getString(R.string.log_apk_selected, originalFileName))
             appendLog(getString(R.string.log_apk_size, formatFileSize(copiedFile.length())))
@@ -215,6 +216,17 @@ class MainActivity : AppCompatActivity() {
     // onCreate
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val sharedPref = getSharedPreferences("settings", MODE_PRIVATE)
+        val savedLang = sharedPref.getString("lang", null)
+        if (savedLang != null) {
+            val locale = Locale.forLanguageTag(savedLang)
+            Locale.setDefault(locale)
+            val config = android.content.res.Configuration(resources.configuration)
+            config.setLocale(locale)
+            @Suppress("DEPRECATION")
+            resources.updateConfiguration(config, resources.displayMetrics)
+        }
+
         super.onCreate(savedInstanceState)
 
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -231,6 +243,8 @@ class MainActivity : AppCompatActivity() {
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
 
         setContentView(R.layout.activity_main)
+
+        originalFileName = getString(R.string.default_apk_name)
 
         setSupportActionBar(findViewById<MaterialToolbar>(R.id.toolbar))
 
@@ -337,7 +351,7 @@ class MainActivity : AppCompatActivity() {
                     }
                 } catch (e: Exception) {
                     runOnUiThread {
-                        appendLog("❌ ${getString(R.string.log_crash, e.message)}")
+                        appendLog(getString(R.string.log_crash, e.message ?: getString(R.string.error_unknown)))
                         setProcessing(false)
                     }
                     e.printStackTrace()
@@ -372,7 +386,7 @@ class MainActivity : AppCompatActivity() {
         apkOutputSizeText.visibility       = View.GONE
         manifestOutputSizeLabel.visibility = View.GONE
         manifestOutputSizeText.visibility  = View.GONE
-        manifestSizeText.text = "…"
+        manifestSizeText.text = getString(R.string.loading_ellipsis)
         apkInfoBar.visibility     = View.VISIBLE
     }
 
@@ -407,17 +421,17 @@ class MainActivity : AppCompatActivity() {
                 val label = if (alias.isNotEmpty()) getString(R.string.signature_ready_pkcs12, alias)
                 else getString(R.string.signature_ready_pkcs12_no_alias)
                 signatureBadge.text = label
-                signatureBadge.setTextColor("#16A34A".toColorInt())
+                signatureBadge.setTextColor(ContextCompat.getColor(this, R.color.log_success))
                 signatureStatusDot.background = ContextCompat.getDrawable(this, R.drawable.status_dot_green)
             }
             "pk8" -> {
                 signatureBadge.text = getString(R.string.signature_ready_pk8)
-                signatureBadge.setTextColor("#16A34A".toColorInt())
+                signatureBadge.setTextColor(ContextCompat.getColor(this, R.color.log_success))
                 signatureStatusDot.background = ContextCompat.getDrawable(this, R.drawable.status_dot_green)
             }
             else -> {
                 signatureBadge.text = getString(R.string.signature_no_key)
-                signatureBadge.setTextColor("#9CA3AF".toColorInt())
+                signatureBadge.setTextColor(ContextCompat.getColor(this, R.color.log_timestamp))
                 signatureStatusDot.background = ContextCompat.getDrawable(this, R.drawable.status_dot_red)
             }
         }
@@ -466,18 +480,18 @@ class MainActivity : AppCompatActivity() {
         val timestamp = "[${timeFormat.format(Date())}] "
         val tsStart   = text.length
         text.append(timestamp)
-        text.setSpan(ForegroundColorSpan("#9CA3AF".toColorInt()), tsStart, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+        text.setSpan(ForegroundColorSpan(ContextCompat.getColor(this, R.color.log_timestamp)), tsStart, text.length, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
 
         // Couleur selon le préfixe emoji
         val color = when {
-            message.startsWith("✅") || message.startsWith("🎉") -> "#16A34A".toColorInt() // vert
-            message.startsWith("❌")                             -> "#DC2626".toColorInt() // rouge
-            message.startsWith("⏳") || message.startsWith("⚙️") -> "#EA580C".toColorInt() // orange
-            message.startsWith("⚠️")                             -> "#D97706".toColorInt() // ambre
+            message.startsWith("✅") || message.startsWith("🎉") -> ContextCompat.getColor(this, R.color.log_success) // vert
+            message.startsWith("❌")                             -> ContextCompat.getColor(this, R.color.log_error) // rouge
+            message.startsWith("⏳") || message.startsWith("⚙️") -> ContextCompat.getColor(this, R.color.log_processing) // orange
+            message.startsWith("⚠️")                             -> ContextCompat.getColor(this, R.color.log_warning) // ambre
             message.startsWith("📦") || message.startsWith("💾") ||
                     message.startsWith("🔑") || message.startsWith("🔏") ||
-                    message.startsWith("ℹ️")                             -> "#2563EB".toColorInt() // bleu
-            else                                                  -> "#374151".toColorInt() // gris foncé
+                    message.startsWith("ℹ️")                             -> ContextCompat.getColor(this, R.color.log_info) // bleu
+            else                                                  -> ContextCompat.getColor(this, R.color.log_default) // gris foncé
         }
 
         val msgStart = text.length
@@ -509,16 +523,16 @@ class MainActivity : AppCompatActivity() {
                 lastRebuiltApk = outputXml   // réutilise le launcher d'enregistrement
                 runOnUiThread {
                     updateManifestOutputSize(outputXml.length())
-                    appendLog("🎉 SUCCESS! Patched manifest: ${formatFileSize(outputXml.length())}")
+                    appendLog(getString(R.string.log_patched_manifest_success, formatFileSize(outputXml.length())))
                     setProcessing(false)
                     // Sauvegarde avec un nom explicite
-                    val outName = "PATCHED_${originalFileName}"
+                    val outName = "${getString(R.string.prefix_patched)}${originalFileName}"
                     saveApkLauncher.launch(outName)
                 }
             }
             is PatchResult.Error -> {
                 runOnUiThread {
-                    appendLog("❌ ${getString(R.string.log_failure, result.message)}")
+                    appendLog(getString(R.string.log_failure, result.message))
                     setProcessing(false)
                 }
             }
@@ -527,7 +541,7 @@ class MainActivity : AppCompatActivity() {
 
     private fun showLogPlaceholder() {
         logTextView.text = getString(R.string.log_placeholder)
-        logTextView.setTextColor("#9CA3AF".toColorInt())
+        logTextView.setTextColor(ContextCompat.getColor(this, R.color.log_timestamp))
         isLogPlaceholderVisible = true
         logLineCounter = 0
         updateLogHeader()
@@ -552,7 +566,7 @@ class MainActivity : AppCompatActivity() {
         val text = logTextView.text.toString()
         if (text.isBlank()) return
         val clipboard = getSystemService(ClipboardManager::class.java)
-        clipboard.setPrimaryClip(ClipData.newPlainText("AMEditor logs", text))
+        clipboard.setPrimaryClip(ClipData.newPlainText(getString(R.string.log_clipboard_label), text))
         Toast.makeText(this, getString(R.string.toast_logs_copied), Toast.LENGTH_SHORT).show()
     }
 
@@ -614,7 +628,7 @@ class MainActivity : AppCompatActivity() {
                 handlePatchResult(result, unsignedApk, shouldSign)
             } catch (e: Exception) {
                 runOnUiThread {
-                    appendLog("❌ ${getString(R.string.log_crash, e.message)}")
+                    appendLog(getString(R.string.log_crash, e.message ?: getString(R.string.error_unknown)))
                     setProcessing(false)
                 }
             }
@@ -624,7 +638,7 @@ class MainActivity : AppCompatActivity() {
     private fun handlePatchResult(result: PatchResult, unsignedApk: File, shouldSign: Boolean) {
         if (result is PatchResult.Success) {
             var finalApk     = result.outputApk
-            var outputPrefix = "PATCHED_"
+            var outputPrefix = getString(R.string.prefix_patched)
 
             if (shouldSign) {
                 val signedApk = File(cacheDir, "signed_mod.apk")
@@ -638,7 +652,7 @@ class MainActivity : AppCompatActivity() {
                         SignerUtils.signApk(unsignedApk, signedApk, userKeystoreFile!!, keystorePass, keyAlias, keyPass)
                     }
                     finalApk     = signedApk
-                    outputPrefix = "SIGNED_"
+                    outputPrefix = getString(R.string.prefix_signed)
                     runOnUiThread { appendLog(getString(R.string.log_signature_applied)) }
                 } catch (e: Exception) {
                     runOnUiThread { appendLog(getString(R.string.log_signature_failed, e.message)) }
@@ -815,7 +829,7 @@ class MainActivity : AppCompatActivity() {
                         ?: throw RuntimeException(getString(R.string.error_cannot_access_key))
                     success = true
                 } catch (e: Exception) {
-                    errorMsg = e.message ?: "Unknown error"
+                    errorMsg = e.message ?: getString(R.string.error_unknown)
                     runOnUiThread { appendLog(getString(R.string.error_keystore_load, errorMsg)) }
                 }
                 runOnUiThread {
@@ -924,8 +938,13 @@ class MainActivity : AppCompatActivity() {
     // ── Language ──────────────────────────────────────────────────────────────
 
     private fun showLanguageDialog() {
-        val languages = arrayOf("English", "Français")
-        val codes     = arrayOf("en",       "fr")
+        val languages = arrayOf(
+            getString(R.string.lang_english),
+            getString(R.string.lang_french),
+            getString(R.string.lang_russian),
+            getString(R.string.lang_hindi)
+        )
+        val codes = arrayOf("en", "fr", "ru", "hi")
 
         // Détecte la langue actuelle pour pré-cocher
         val currentLang = resources.configuration.locales[0].language
@@ -943,6 +962,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun applyLanguage(langCode: String) {
+        getSharedPreferences("settings", MODE_PRIVATE).edit { putString("lang", langCode) }
+
         val locale = Locale.forLanguageTag(langCode)
         Locale.setDefault(locale)
         val config = android.content.res.Configuration(resources.configuration)
@@ -992,7 +1013,7 @@ class MainActivity : AppCompatActivity() {
             .setTitle(getString(R.string.dialog_contact_title))
             .setMessage(getString(R.string.contact_telegram))
             .setPositiveButton(getString(R.string.btn_open_telegram)) { _, _ ->
-                val intent = Intent(Intent.ACTION_VIEW, "https://t.me/manifestpatcher".toUri())
+                val intent = Intent(Intent.ACTION_VIEW, getString(R.string.url_telegram_link).toUri())
                 runCatching { startActivity(intent) }
             }
             .setNegativeButton(getString(R.string.btn_close), null)

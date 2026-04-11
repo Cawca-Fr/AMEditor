@@ -128,6 +128,8 @@ class CustomPatchActivity : AppCompatActivity() {
     // Lifecycle
     // ════════════════════════════════════════════════════════════════════════
 
+    private var lastBackPressTime = 0L
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -144,6 +146,18 @@ class CustomPatchActivity : AppCompatActivity() {
         WindowInsetsControllerCompat(window, window.decorView).isAppearanceLightStatusBars = true
         setContentView(R.layout.activity_custom_patch)
         setupToolbar(); setupViews(); setupButtons(); setupTouchListener()
+
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val currentTime = System.currentTimeMillis()
+                if (currentTime - lastBackPressTime < 2000) {
+                    finish()
+                } else {
+                    lastBackPressTime = currentTime
+                    Toast.makeText(this@CustomPatchActivity, getString(R.string.toast_press_back_again), Toast.LENGTH_SHORT).show()
+                }
+            }
+        })
 
         xmlContent = XmlContentHolder.get() ?: intent.getStringExtra("XML_CONTENT") ?: ""
         if (xmlContent.isEmpty()) {
