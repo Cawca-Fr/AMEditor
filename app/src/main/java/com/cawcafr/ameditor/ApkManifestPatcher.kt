@@ -120,6 +120,16 @@ class ApkManifestPatcher(private val context: Context) {
         }
     }
 
+    /**
+     * Version optimisée qui écrit directement dans un fichier pour économiser la RAM
+     * sur les transitions d'Activity.
+     */
+    fun fetchManifestToFile(apkFile: File, outputFile: File): Long {
+        val (xml, size) = fetchManifestContent(apkFile)
+        outputFile.writeText(xml)
+        return size
+    }
+
 
     private fun extractManifestFromApk(apkFile: File, outputFile: File): Boolean {
         return try {

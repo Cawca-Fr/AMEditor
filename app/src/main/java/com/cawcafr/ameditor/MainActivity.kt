@@ -185,7 +185,7 @@ class MainActivity : AppCompatActivity() {
         isXmlMode             = isXml
         cachedXmlContent      = null
         cachedManifestBinarySize = -1L
-        XmlContentHolder.clear()
+        XmlContentHolder.clear() // This now also deletes the temp file
 
         showApkSizeBar(copiedFile.length())
         setApkDependentButtonsEnabled(true)
@@ -584,11 +584,18 @@ class MainActivity : AppCompatActivity() {
 
         Thread {
             try {
-                val (xml, binarySize) = ApkManifestPatcher(this).fetchManifestContent(apkFile!!)
+                val patcher = ApkManifestPatcher(this)
+                val tempFile = File(cacheDir, "manifest_content.xml")
+                val binarySize = patcher.fetchManifestToFile(apkFile!!, tempFile)
+                
+                // Still keep cachedXmlContent for now to avoid breaking other logic, 
+                // but XmlContentHolder gets the file.
+                val xml = tempFile.readText() 
+
                 runOnUiThread {
                     cachedXmlContent         = xml
                     cachedManifestBinarySize = binarySize
-                    XmlContentHolder.set(xml)
+                    XmlContentHolder.set(tempFile)
                     importDialog?.dismiss(); importDialog = null
                     // Affiche la taille binaire réelle (pas xml.length qui est ~14KB de plus)
                     manifestSizeText.text = formatFileSize(binarySize)
@@ -692,7 +699,9 @@ class MainActivity : AppCompatActivity() {
     private fun loadXmlForCustomEditor() {
         val cached = cachedXmlContent
         if (cached != null) {
-            XmlContentHolder.set(cached)
+            val tempFile = File(cacheDir, "manifest_content.xml")
+            if (!tempFile.exists()) tempFile.writeText(cached)
+            XmlContentHolder.set(tempFile)
             customPatchLauncher.launch(Intent(this, CustomPatchActivity::class.java))
             return
         }
@@ -700,13 +709,17 @@ class MainActivity : AppCompatActivity() {
         toast.show()
         Thread {
             try {
-                val (xml, binarySize) = ApkManifestPatcher(this).fetchManifestContent(apkFile!!)
+                val patcher = ApkManifestPatcher(this)
+                val tempFile = File(cacheDir, "manifest_content.xml")
+                val binarySize = patcher.fetchManifestToFile(apkFile!!, tempFile)
+                val xml = tempFile.readText()
+
                 cachedXmlContent         = xml
                 cachedManifestBinarySize = binarySize
                 runOnUiThread {
                     toast.cancel()
                     manifestSizeText.text = formatFileSize(binarySize)
-                    XmlContentHolder.set(xml)
+                    XmlContentHolder.set(tempFile)
                     customPatchLauncher.launch(Intent(this, CustomPatchActivity::class.java))
                 }
             } catch (e: Exception) {
@@ -721,7 +734,9 @@ class MainActivity : AppCompatActivity() {
     private fun showManifestPreview(file: File) {
         val cached = cachedXmlContent
         if (cached != null) {
-            XmlContentHolder.set(cached)
+            val tempFile = File(cacheDir, "manifest_content.xml")
+            if (!tempFile.exists()) tempFile.writeText(cached)
+            XmlContentHolder.set(tempFile)
             startActivity(Intent(this, XmlPreviewActivity::class.java))
             return
         }
@@ -730,13 +745,17 @@ class MainActivity : AppCompatActivity() {
         progressDialog.show()
         Thread {
             try {
-                val (xmlContent, binarySize) = ApkManifestPatcher(this).fetchManifestContent(file)
+                val patcher = ApkManifestPatcher(this)
+                val tempFile = File(cacheDir, "manifest_content.xml")
+                val binarySize = patcher.fetchManifestToFile(apkFile!!, tempFile)
+                val xmlContent = tempFile.readText()
+
                 cachedXmlContent         = xmlContent
                 cachedManifestBinarySize = binarySize
                 runOnUiThread {
                     progressDialog.dismiss()
                     manifestSizeText.text = formatFileSize(binarySize)
-                    XmlContentHolder.set(xmlContent)
+                    XmlContentHolder.set(tempFile)
                     startActivity(Intent(this, XmlPreviewActivity::class.java))
                 }
             } catch (e: Exception) {

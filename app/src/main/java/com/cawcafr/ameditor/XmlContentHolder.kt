@@ -1,23 +1,32 @@
 package com.cawcafr.ameditor
 
-/**
- * Singleton en mémoire pour partager le contenu XML entre Activities.
+import java.io.File
 
- * CYCLE DE VIE :
- * - Set dans MainActivity avant startActivity()
- * - Read dans XmlPreviewActivity / CustomPatchActivity dans onCreate()
- * - Clear() appelé dans MainActivity quand un nouvel APK est sélectionné
+/**
+ * Singleton partagé pour le contenu XML.
+ * OPTIMISÉ : Stocke un fichier temporaire au lieu d'une String géante en RAM.
  */
 object XmlContentHolder {
-    private var xmlContent: String? = null
+    private var xmlFile: File? = null
 
-    fun set(content: String) {
-        xmlContent = content
+    fun set(file: File) {
+        xmlFile = file
     }
 
-    fun get(): String? = xmlContent
+    /** Lit le contenu complet du fichier en String (pour compatibilité) */
+    fun get(): String? {
+        val file = xmlFile ?: return null
+        return try {
+            file.readText()
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    fun getFile(): File? = xmlFile
 
     fun clear() {
-        xmlContent = null
+        xmlFile?.delete()
+        xmlFile = null
     }
 }

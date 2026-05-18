@@ -172,7 +172,7 @@
     <string name="dialog_credits_title">⭐  Credits</string>
     <string name="dialog_credits_msg">Developer - Cawca-Fr\nEnglish language support - Cawca-Fr\nFrench language support - Cawca-Fr</string>
     <string name="dialog_ressources_title">Resources</string>
-    <string name="dialog_ressources_msg">AMEditor\n\nOpen source libraries used:\n\n• apk-axml  — Binary XML codec\n  (AXML decode / encode)\n\n• apksig (Google)  — APK signing\n  V1 / V2 / V3 signatures\n\n• AndroidX / Material Components\n  (Google)\n\nBuilt with ❤️ using Kotlin</string>
+    <string name="dialog_ressources_msg">AMEditor\n\nThe following open-source libraries are used:\n\n• Xpatch — github.com/WindySha/Xpatch\n• xml2axml — github.com/hzw1199/xml2axml\n• APK Explorer &amp; Editor — github.com/apk-editor/APK-Explorer-Editor</string>
     <string name="dialog_changelog_title">Changelog</string>
     <string name="dialog_changelog_msg">v1.0\n• Initial release\n• AndroidManifest.xml patching\n• Custom patch editor\n• Manifest preview\n• Sign output apk</string>
 

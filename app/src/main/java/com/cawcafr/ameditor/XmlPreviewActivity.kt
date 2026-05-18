@@ -16,7 +16,6 @@ import android.view.Menu
 import android.view.MenuItem
 import android.view.MotionEvent
 import android.view.View
-import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputMethodManager
 import android.widget.ImageButton
@@ -58,6 +57,7 @@ class XmlPreviewActivity : AppCompatActivity() {
     private lateinit var btnSearchClose: ImageButton
 
     private var xmlContent = ""
+    private var transformedXml = "" // The content with ZWSP inserted
 
     // ── Viewport colorization ─────────────────────────────────────────────────
     //
@@ -125,6 +125,8 @@ class XmlPreviewActivity : AppCompatActivity() {
     private var lastBackPressTime = 0L
     private var isWordWrapEnabled = false
 
+    private val ZWSP = "\u200B"
+
     // ════════════════════════════════════════════════════════════════════════
     // Lifecycle
     // ════════════════════════════════════════════════════════════════════════
@@ -186,9 +188,14 @@ class XmlPreviewActivity : AppCompatActivity() {
         supportActionBar?.title = "AndroidManifest.xml"
     }
 
-    @SuppressLint("ClickableViewAccessibility")
+    @SuppressLint("ClickableViewAccessibility", "WrongConstant")
     private fun setupViews() {
         codeTextView        = findViewById(R.id.codeTextView)
+        
+        // OPTIMIZATION: Faster layout calculation for large text
+        codeTextView.breakStrategy = android.text.Layout.BREAK_STRATEGY_SIMPLE
+        codeTextView.hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NONE
+
         xmlScrollView       = findViewById(R.id.xmlScrollView)
         xmlHorizontalScroll = findViewById(R.id.xmlHorizontalScroll)
         scrollbarThumb      = findViewById(R.id.scrollbarThumb)
@@ -281,7 +288,10 @@ class XmlPreviewActivity : AppCompatActivity() {
         val y = (e.y - codeTextView.totalPaddingTop).toInt()
         if (y < 0) return null
         val line = layout.getLineForVertical(y).coerceAtMost(layout.lineCount - 1)
-        return layout.getOffsetForHorizontal(line, x.toFloat())
+        val offset = layout.getOffsetForHorizontal(line, x.toFloat())
+
+        // Map back to original index if Word Wrap is active
+        return if (isWordWrapEnabled) offset / 2 else offset
     }
 
     /**
@@ -375,15 +385,17 @@ class XmlPreviewActivity : AppCompatActivity() {
         }
 
         // Copy / Copy line — always visible
-        container.addView(btn("Copy") { copyToClipboard(xmlContent.substring(start, end)) })
+        container.addView(btn("Copy") {
+            // When word wrap is enabled, we already mapped start/end back to original indices
+            copyToClipboard(xmlContent.substring(start, end))
+        })
         container.addView(sep())
         container.addView(btn("Copy line") {
-            val line = layout.getLineForOffset(start.coerceIn(0, xmlContent.length - 1))
-            val ls   = layout.getLineStart(line)
-            val le   = layout.getLineEnd(line).let {
-                if (it > ls && xmlContent[it - 1] == '\n') it - 1 else it
-            }
-            copyToClipboard(xmlContent.substring(ls, le))
+            // Mapping line start/end is trickier due to ZWSP.
+            // We find the original line by searching for \n in the original text.
+            val origLineStart = xmlContent.lastIndexOf('\n', start).let { if (it == -1) 0 else it + 1 }
+            val origLineEnd = xmlContent.indexOf('\n', start).let { if (it == -1) xmlContent.length else it }
+            copyToClipboard(xmlContent.substring(origLineStart, origLineEnd))
         })
         // ▼ hidden at level 0 (original token)
         if (selectionLevel > 0) {
@@ -639,12 +651,27 @@ class XmlPreviewActivity : AppCompatActivity() {
 
         Thread {
             try {
+                // If Word Wrap is enabled, we must transform the text first.
+                // Each character followed by a Zero Width Space (\u200B).
+                val currentXml = if (isWordWrapEnabled) {
+                    val sb = StringBuilder(xmlContent.length * 2)
+                    for (c in xmlContent) {
+                        sb.append(c)
+                        sb.append(ZWSP)
+                    }
+                    transformedXml = sb.toString()
+                    transformedXml
+                } else {
+                    transformedXml = ""
+                    xmlContent
+                }
+
                 if (isLarge) {
                     // Step 1 — plain text: user sees content immediately, 0 spans
-                    val precomputed = PrecomputedTextCompat.create(SpannableString(xmlContent), params)
+                    val precomputed = PrecomputedTextCompat.create(SpannableString(currentXml), params)
                     runOnUiThread {
                         TextViewCompat.setPrecomputedText(codeTextView, precomputed)
-                        xmlScrollView.post { updateViewportSpans() }
+                        applyWordWrap()
                     }
 
                     // Step 2 — 80 KB chunks: colour fills in progressively
@@ -656,13 +683,44 @@ class XmlPreviewActivity : AppCompatActivity() {
                         val from = chunkIdx * HIGHLIGHT_CHUNK
                         val to   = minOf(from + HIGHLIGHT_CHUNK, len)
 
-                        accumulated.addAll(
-                            XmlSyntaxHighlighter.computeSpans(xmlContent, from, to)
-                                .map { (s, e, c) ->
-                                    SpanRecord(ForegroundColorSpan(c), s, e,
-                                        Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        val rawSpans = XmlSyntaxHighlighter.computeSpans(xmlContent, from, to)
+
+                        for ((s, e, c) in rawSpans) {
+                            if (isWordWrapEnabled) {
+                                // Map indices to transformed string (each char is now 2 chars)
+                                accumulated.add(SpanRecord(ForegroundColorSpan(c), s * 2, e * 2,
+                                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE))
+                            } else {
+                                accumulated.add(SpanRecord(ForegroundColorSpan(c), s, e,
+                                    Spannable.SPAN_EXCLUSIVE_EXCLUSIVE))
+                            }
+                        }
+
+                        // Add Indentation Spans (only when Word Wrap is ON)
+                        if (isWordWrapEnabled && chunkIdx == numChunks - 1) {
+                            // Find all newlines and add CodeIndentSpan
+                            var lineStart = 0
+                            val spaceWidth = codeTextView.paint.measureText(" ")
+                            val arrowMargin = (12 * resources.displayMetrics.density).toInt()
+
+                            while (lineStart < xmlContent.length) {
+                                var lineEnd = xmlContent.indexOf('\n', lineStart)
+                                if (lineEnd == -1) lineEnd = xmlContent.length
+
+                                var spaces = 0
+                                while (lineStart + spaces < lineEnd && xmlContent[lineStart + spaces] == ' ') {
+                                    spaces++
                                 }
-                        )
+
+                                if (spaces > 0) {
+                                    val indentPx = (spaces * spaceWidth).toInt()
+                                    // Map indices: lineStart*2 to lineEnd*2
+                                    accumulated.add(SpanRecord(CodeIndentSpan(indentPx, arrowMargin),
+                                        lineStart * 2, lineEnd * 2, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE))
+                                }
+                                lineStart = lineEnd + 1
+                            }
+                        }
 
                         val snapshot: List<SpanRecord> = accumulated.toList()
                         runOnUiThread {
@@ -672,11 +730,41 @@ class XmlPreviewActivity : AppCompatActivity() {
                     }
                 } else {
                     // Small file — full highlight + PrecomputedTextCompat
-                    val highlighted = XmlSyntaxHighlighter.highlight(xmlContent)
+                    val highlighted = if (isWordWrapEnabled) {
+                        val sb = SpannableString(currentXml)
+                        // Map syntax highlighting
+                        val rawSpans = XmlSyntaxHighlighter.computeSpans(xmlContent)
+                        for ((s, e, c) in rawSpans) {
+                            sb.setSpan(ForegroundColorSpan(c), s * 2, e * 2, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                        }
+                        // Add Indentation Spans
+                        var lineStart = 0
+                        val spaceWidth = codeTextView.paint.measureText(" ")
+                        val arrowMargin = (12 * resources.displayMetrics.density).toInt()
+                        while (lineStart < xmlContent.length) {
+                            var lineEnd = xmlContent.indexOf('\n', lineStart)
+                            if (lineEnd == -1) lineEnd = xmlContent.length
+                            var spaces = 0
+                            while (lineStart + spaces < lineEnd && xmlContent[lineStart + spaces] == ' ') spaces++
+                            if (spaces > 0) {
+                                val indentPx = (spaces * spaceWidth).toInt()
+                                sb.setSpan(CodeIndentSpan(indentPx, arrowMargin),
+                                    lineStart * 2, lineEnd * 2, Spannable.SPAN_EXCLUSIVE_EXCLUSIVE)
+                            }
+                            lineStart = lineEnd + 1
+                        }
+                        sb
+                    } else {
+                        XmlSyntaxHighlighter.highlight(xmlContent)
+                    }
+
                     val precomputed = PrecomputedTextCompat.create(
                         SpannableString.valueOf(highlighted), params
                     )
-                    runOnUiThread { TextViewCompat.setPrecomputedText(codeTextView, precomputed) }
+                    runOnUiThread {
+                        TextViewCompat.setPrecomputedText(codeTextView, precomputed)
+                        applyWordWrap()
+                    }
                 }
             } catch (e: Exception) {
                 val plain = PrecomputedTextCompat.create(SpannableString(xmlContent), params)
@@ -956,51 +1044,74 @@ class XmlPreviewActivity : AppCompatActivity() {
         MENU_WORD_WRAP -> {
             isWordWrapEnabled = !isWordWrapEnabled
             item.isChecked = isWordWrapEnabled
-            applyWordWrap()
+
+            // Re-render because the internal string changes (ZWSP insertion)
+            appliedSpans.clear()
+            allSpanInfos = emptyList()
+            spanApplier.cancel()
+            startRender()
             true
         }
         else -> super.onOptionsItemSelected(item)
     }
 
     private fun applyWordWrap() {
-        // ── POURQUOI L'ANCIEN CODE NE FONCTIONNAIT PAS ────────────────────────
-        // HorizontalScrollView mesure toujours ses enfants avec
-        // MeasureSpec.UNSPECIFIED (largeur infinie). Donc assigner
-        // layoutParams.width = uneValeurFixe est silencieusement ignoré —
-        // l'enfant reçoit toujours un espace horizontal infini et ne
-        // revient jamais à la ligne.
-        //
-        // CORRECTION : maxWidth est respecté même dans un HorizontalScrollView
-        // car il est appliqué à l'intérieur de TextView.onMeasure() AVANT que
-        // la contrainte du parent soit prise en compte. En fixant maxWidth à la
-        // largeur visible du NestedScrollView, le texte revient à la ligne
-        // immédiatement dès le clic.
-        // ─────────────────────────────────────────────────────────────────────
-
         if (isWordWrapEnabled) {
             codeTextView.setHorizontallyScrolling(false)
 
-            val visibleWidth = xmlScrollView.width
-            if (visibleWidth > 0) {
-                // La largeur est déjà connue → appliquer immédiatement
-                codeTextView.maxWidth = visibleWidth
-                codeTextView.requestLayout()
-                xmlScrollView.post { updateViewportSpans() }
-            } else {
-                // Premier appel depuis onCreate avant le premier layout
-                xmlScrollView.post {
-                    codeTextView.maxWidth = xmlScrollView.width
+            val computeAndApply = {
+                // Real available width = container minus ALL padding layers
+                val available = xmlScrollView.width -
+                        xmlScrollView.paddingLeft - xmlScrollView.paddingRight -
+                        xmlHorizontalScroll.paddingLeft - xmlHorizontalScroll.paddingRight -
+                        codeTextView.paddingLeft - codeTextView.paddingRight
+
+                if (available > 0) {
+                    codeTextView.maxWidth = available
                     codeTextView.requestLayout()
-                    updateViewportSpans()
+                    // viewport update is handled by startRender completion
                 }
             }
+
+            if (xmlScrollView.width > 0) {
+                computeAndApply()
+            } else {
+                // First call before layout is complete (e.g. from onCreate)
+                xmlScrollView.post { computeAndApply() }
+            }
+
         } else {
             codeTextView.setHorizontallyScrolling(true)
-            codeTextView.maxWidth = Int.MAX_VALUE   // sans restriction
+            codeTextView.maxWidth = Int.MAX_VALUE
             codeTextView.requestLayout()
-            xmlScrollView.post { updateViewportSpans() }
         }
     }
+
+    private inner class CodeIndentSpan(
+        private val indentPx: Int,
+        private val arrowMarginPx: Int
+    ) : android.text.style.LeadingMarginSpan {
+
+        override fun getLeadingMargin(first: Boolean): Int {
+            return if (first) 0 else indentPx + arrowMarginPx
+        }
+
+        override fun drawLeadingMargin(
+            c: android.graphics.Canvas, p: android.graphics.Paint, x: Int, dir: Int,
+            top: Int, baseline: Int, bottom: Int,
+            text: CharSequence, start: Int, end: Int,
+            first: Boolean, layout: android.text.Layout
+        ) {
+            if (!first) {
+                val oldColor = p.color
+                p.color = 0xFF9E9E9E.toInt()
+                val drawX = x + (dir * indentPx)
+                c.drawText("↳", drawX.toFloat(), baseline.toFloat(), p)
+                p.color = oldColor
+            }
+        }
+    }
+
 
     companion object {
         private const val MENU_SEARCH = 1001

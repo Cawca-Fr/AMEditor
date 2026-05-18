@@ -8,7 +8,7 @@
 
     <string name="card_title_source">स्रोत APK</string>
     <string name="card_title_modding">मोडिंग विकल्प</string>
-    <string name="card_title_signature">हस्ताक्षर</string>
+    <string name="card_title_signature">सिग्नेचर</string>
     <string name="label_optional">(वैकल्पिक)</string>
     <string name="toast_press_back_again">बाहर निकलने के लिए फिर से बैक दबाएं</string>
 
@@ -25,7 +25,7 @@
 
 
     <!-- Script Python -->
-    <string name="log_python_call_details_kotlin">कॉलिंग process_apk इसके साथ:\nइनपुट (कैश): %1$s\nआउटपुट (टेम्प कैश): %2$s</string>
+    <string name="log_python_call_details_kotlin">कॉलिंग process_apk के साथ:\nइनपुट (कैश): %1$s\nआउटपुट (टेम्प कैश): %2$s</string>
     <string name="python_processing_complete_details">पायथन प्रसंस्करण पूरा हुआ!\n  OneSignal मिला: %1$d\n  ट्रैकर्स मिले: %2$d\n  इंटेंट्स संशोधित: %3$d</string>
     <string name="prompt_save_location">कृपया चुनें कि संशोधित APK कहाँ सहेजना है।</string>
     <string name="python_script_unknown_error">अज्ञात पायथन स्क्रिप्ट त्रुटि या अप्रत्याशित परिणाम।</string>
@@ -56,8 +56,8 @@
     <string name="log_success_total">कुल सफलता!\n</string>
     <string name="log_failure">❌ विफलता: %1$s</string>
     <string name="log_crash">❌ क्रैश: %1$s</string>
-    <string name="sign_apk">APK पर हस्ताक्षर करें</string>
-    <string name="import_signature">हस्ताक्षर आयात करें</string>
+    <string name="sign_apk">APK साइन करें</string>
+    <string name="import_signature">सिग्नेचर आयात करें</string>
     <string name="info_icon">जानकारी</string>
 
     <!-- New Strings -->
@@ -67,7 +67,7 @@
     <string name="signature_ready_pkcs12_no_alias">🔑 PKCS12 तैयार</string>
     <string name="signature_no_key">🔒 कोई कुंजी आयात नहीं की गई</string>
     <string name="button_pk8_pem_ready">PK8/PEM ✅</string>
-    <string name="button_signature_ready">हस्ताक्षर ✅</string>
+    <string name="button_signature_ready">सिग्नेचर ✅</string>
     <string name="log_line_count">%1$d पंक्तियाँ</string>
     <string name="error_no_content">त्रुटि: कोई सामग्री प्राप्त नहीं हुई।</string>
     <string name="search_count">%1$d / %2$d</string>
@@ -110,15 +110,15 @@
     <string name="menu_apply">लागू करें</string>
 
     <!-- ManifestSanitizer / Patcher Strings -->
-    <string name="log_step_extract_manifest">चरण 1: AndroidManifest.xml निकाल रहा है...</string>
-    <string name="log_step_decode_manifest">चरण 2: डिकोडिंग: AXML -> XML...</string>
-    <string name="log_step_patching">चरण 3: पैचिंग...</string>
-    <string name="log_step_encode_manifest">चरण 4: एन्कोडिंग: XML -> AXML...</string>
-    <string name="log_step_rebuild_apk">चरण 5: APK का पुनर्निर्माण...</string>
+    <string name="log_step_extract_manifest">चरण 1: AndroidManifest.xml निकालना…</string>
+    <string name="log_step_decode_manifest">चरण 2: डिकोडिंग: AXML -> XML…</string>
+    <string name="log_step_patching">चरण 3: पैचिंग…</string>
+    <string name="log_step_encode_manifest">चरण 4: एन्कोडिंग: XML -> AXML…</string>
+    <string name="log_step_rebuild_apk">चरण 5: APK का पुनर्निर्माण…</string>
     <string name="log_process_finished">प्रक्रिया समाप्त हुई।</string>
-    <string name="error_manifest_extraction">मैनिफेस्ट निकालने में विफल</string>
+    <string name="error_manifest_extraction">मैनिफेस्ट निष्कर्षण विफल</string>
     <string name="error_decode_failed">AXML को डीकोड करने में विफल</string>
-    <string name="error_encode_failed">XML को AXML में एनकोड करने में विफल</string>
+    <string name="error_encode_failed">XML को AXML में एन्कोड करने में विफल</string>
     <string name="log_patched_successfully">सफलतापूर्वक पैच किया गया!</string>
     <string name="log_patched_count">पैच किए गए: %1$d तत्व</string>
     <string name="log_custom_patch_applied">कस्टम पैच लागू किया गया: %1$d हटाए गए, %2$d अक्षम किए गए।</string>
@@ -135,55 +135,55 @@
     <string name="error_unsupported_keystore">केवल PKCS12 कीस्टोर (.p12 / .pfx) या प्राइवेट की (.pk8) समर्थित हैं</string>
     <string name="error_copy_apk_failed">APK कॉपी करने में विफल: %1$s</string>
     <string name="log_apk_size">आकार: %1$s</string>
-    <string name="error_import_signature">कृपया पहले एक हस्ताक्षर आयात करें</string>
+    <string name="error_import_signature">कृपया पहले एक सिग्नेचर आयात करें</string>
     <string name="log_starting_process">%1$s के लिए प्रक्रिया शुरू हो रही है…</string>
     <string name="log_extracting_manifest">मैनिफेस्ट निकाला जा रहा है…</string>
     <string name="log_manifest_ready">✅ मैनिफेस्ट तैयार — बाइनरी: %1$s</string>
     <string name="log_manifest_preload_failed">⚠️ मैनिफेस्ट प्री-लोड विफल: %1$s</string>
-    <string name="log_starting_custom_patch">कस्टम पैच शुरू हो रहा है…</string>
+    <string name="log_starting_custom_patch">⏳ कस्टम पैच शुरू हो रहा है…</string>
     <string name="log_applying_custom_rules">कस्टम पैच नियम लागू किए जा रहे हैं…</string>
     <string name="log_signing_apk">APK पर हस्ताक्षर किए जा रहे हैं…</string>
-    <string name="log_signing_pk8_pem">PK8 + PEM के साथ हस्ताक्षर किए जा रहे हैं…</string>
-    <string name="log_signing_pkcs12">PKCS12 कीस्टोर के साथ हस्ताक्षर किए जा रहे हैं…</string>
+    <string name="log_signing_pk8_pem">🔏 PK8 + PEM के साथ हस्ताक्षर किए जा रहे हैं…</string>
+    <string name="log_signing_pkcs12">🔏 PKCS12 कीस्टोर के साथ हस्ताक्षर किए जा रहे हैं…</string>
     <string name="log_signature_applied">✅ हस्ताक्षर लागू किया गया।</string>
     <string name="log_signature_failed">❌ हस्ताक्षर विफल: %1$s। बिना हस्ताक्षर के सहेजा जा रहा है।</string>
-    <string name="log_signature_skipped">ℹ️ हस्ताक्षर छोड़ा गया (उपयोगकर्ता की पसंद)।</string>
+    <string name="log_signature_skipped">ℹ️ हस्ताक्षर छोड़ दिया गया (उपयोगकर्ता की पसंद)।</string>
     <string name="log_success_output">🎉 सफलता! आउटपुट: %1$s</string>
     <string name="log_reading_manifest">मैनिफेस्ट पढ़ा जा रहा है…</string>
     <string name="dialog_reading_manifest_title">मैनिफेस्ट पढ़ा जा रहा है…</string>
     <string name="dialog_parsing_axml_msg">AXML पार्स किया जा रहा है…</string>
-    <string name="log_raw_key_pair_loaded">कच्चा की पेयर लोड हो गया।</string>
-    <string name="toast_key_pair_loaded">की पेयर लोड हो गया!</string>
-    <string name="dialog_supported_formats_title">समर्थित हस्ताक्षर प्रारूप</string>
-    <string name="dialog_supported_formats_msg">✅ PKCS12 (.p12, .pfx)\n✅ प्लेटफ़ॉर्म कीज़ (.pk8 + .pem)\n\n❌ JKS और BKS समर्थित नहीं हैं।\n\nMT Manager या Ads regex+ का उपयोग करके कन्वर्ट करें।</string>
+    <string name="log_raw_key_pair_loaded">🔑 रॉ की जोड़ी लोड हो गई।</string>
+    <string name="toast_key_pair_loaded">की जोड़ी लोड हो गई!</string>
+    <string name="dialog_supported_formats_title">समर्थित सिग्नेचर प्रारूप</string>
+    <string name="dialog_supported_formats_msg">✅ PKCS12 (.p12, .pfx)\n✅ प्लेटफ़ॉर्म कीज़ (.pk8 + .pem)\n\n❌ JKS और BKS समर्थित नहीं हैं।\n\nरूपांतरित करने के लिए MT Manager या Ads regex+ का उपयोग करें।</string>
     <string name="label_password">पासवर्ड</string>
     <string name="label_alias">एलियास</string>
     <string name="label_alias_password">एलियास पासवर्ड</string>
     <string name="helper_same_password">कीस्टोर पासवर्ड के समान होने पर खाली छोड़ दें</string>
-    <string name="dialog_import_signature_title">हस्ताक्षर आयात करें</string>
+    <string name="dialog_import_signature_title">सिग्नेचर आयात करें</string>
     <string name="error_password_required">पासवर्ड आवश्यक है</string>
     <string name="error_keystore_load">⚠️ कीस्टोर त्रुटि: %1$s</string>
-    <string name="log_signature_loaded">हस्ताक्षर लोड किया गया (एलियास: %1$s)</string>
+    <string name="log_signature_loaded">🔑 सिग्नेचर लोड किया गया (एलियास: %1$s)</string>
     <string name="toast_logs_copied">लॉग क्लिपबोर्ड पर कॉपी किए गए</string>
     <string name="dialog_faq_title">❓  अक्सर पूछे जाने वाले प्रश्न</string>
-    <string name="dialog_faq_msg">प्रश्न: कौन से APK प्रारूप समर्थित हैं?\nउत्तर: कोई भी मानक APK फ़ाइल (.apk)।\n\nप्रश्न: कौन से हस्ताक्षर प्रारूप समर्थित हैं?\nउत्तर: PKCS12 (.p12 / .pfx) और प्लेटफ़ॉर्म की पेयर (.pk8 + .pem)। JKS और BKS समर्थित नहीं हैं।\n\nप्रश्न: आउटपुट APK का आकार थोड़ा अलग क्यों है?\nउत्तर: मूल हस्ताक्षर बदल दिया गया है और मैनिफेस्ट को फिर से एनकोड + पैच किया गया है।\n\nप्रश्न: पैचिंग प्रक्रिया क्या है?\nउत्तर: AndroidManifest.xml फ़ाइल को ट्रैकर्स और विज्ञापनों को हटाने या अक्षम करने के लिए पैच किया जाएगा।\n\nप्रश्न: ऐप \"मैनिफेस्ट प्री-लोड विफल\" दिखाता है। इसका क्या मतलब है?\nउत्तर: APK एन्क्रिप्टेड हो सकता है या गैर-मानक बाइनरी XML प्रारूप का उपयोग कर सकता है।</string>
+    <string name="dialog_faq_msg">प्रश्न: कौन से APK प्रारूप समर्थित हैं?\nउत्तर: कोई भी मानक APK फ़ाइल (.apk)।\n\nप्रश्न: कौन से सिग्नेचर प्रारूप समर्थित हैं?\nउत्तर: PKCS12 (.p12 / .pfx) और प्लेटफ़ॉर्म की जोड़ी (.pk8 + .pem)। JKS और BKS समर्थित नहीं हैं।\n\nप्रश्न: आउटपुट APK का आकार थोड़ा भिन्न क्यों है?\nउत्तर: मूल हस्ताक्षर बदल दिया गया है और मैनिफेस्ट को फिर से एन्कोड + पैच किया गया है।\n\nप्रश्न: पैचिंग प्रक्रिया क्या है?\nउत्तर: AndroidManifest.xml फ़ाइल को ट्रैकर्स और विज्ञापनों को हटाने या अक्षम करने के लिए पैच किया जाएगा।\n\nप्रश्न: ऐप \"मैनिफेस्ट प्री-लोड विफल\" दिखाता है। इसका क्या मतलब है?\nउत्तर: APK एन्क्रिप्टेड हो सकता है या गैर-मानक बाइनरी XML प्रारूप का उपयोग कर सकता है।</string>
     <string name="dialog_contact_title">✉️  संपर्क</string>
     <string name="btn_close">बंद करें</string>
     <string name="dialog_credits_title">⭐  क्रेडिट</string>
     <string name="dialog_credits_msg">डेवलपर - Cawca-Fr\nअंग्रेजी भाषा समर्थन - Cawca-Fr\nफ्रेंच भाषा समर्थन - Cawca-Fr</string>
     <string name="dialog_ressources_title">संसाधन</string>
-    <string name="dialog_ressources_msg">AMEditor\n\nउपयोग की गई ओपन सोर्स लाइब्रेरीज़:\n\n• apk-axml — बाइनरी XML कोडेक\n  (AXML डीकोड / एनकोड)\n\n• apksig (Google) — APK हस्ताक्षर\n  V1 / V2 / V3 हस्ताक्षर\n\n• AndroidX / Material Components\n  (Google)\n\nकोटलिन का उपयोग करके ❤️ के साथ बनाया गया</string>
+    <string name="dialog_ressources_msg">AMEditor\n\nनिम्नलिखित ओपन-सोर्स लाइब्रेरी का उपयोग किया जाता है:\n\n• Xpatch — github.com/WindySha/Xpatch\n• xml2axml — github.com/hzw1199/xml2axml\n• APK Explorer &amp; Editor — github.com/apk-editor/APK-Explorer-Editor</string>
     <string name="dialog_changelog_title">बदलावों की सूची</string>
     <string name="dialog_changelog_msg">v1.0\n• प्रारंभिक रिलीज़\n• AndroidManifest.xml पैचिंग\n• कस्टम पैच संपादक\n• मैनिफेस्ट पूर्वावलोकन\n• आउटपुट एपीके पर हस्ताक्षर करें</string>
 
-    <string name="log_manifest_selected">मैनिफेस्ट चुना गया: %1$s</string>
-    <string name="log_manifest_size">आकार: %1$s</string>
+    <string name="log_manifest_selected">📦 मैनिफेस्ट चुना गया: %1$s</string>
+    <string name="log_manifest_size">💾 आकार: %1$s</string>
     <string name="log_patched_manifest_success">🎉 सफलता! पैच किया गया मैनिफेस्ट: %1$s</string>
     <string name="log_clipboard_label">AMEditor लॉग</string>
-    <string name="lang_english">🇺🇸 अंग्रेजी</string>
-    <string name="lang_french">🇫🇷 फ्रेंच</string>
-    <string name="lang_russian">🇷🇺 रूसी</string>
-    <string name="lang_hindi">🇮🇳 हिंदी</string>
+    <string name="lang_english">🇺🇸 English</string>
+    <string name="lang_french">🇫🇷 Français</string>
+    <string name="lang_russian">🇷🇺 Russian</string>
+    <string name="lang_hindi">🇮🇳 Hindi</string>
     <string name="loading_ellipsis">…</string>
     <string name="url_telegram_link" translatable="false">https://t.me/manifestpatcher</string>
     <string name="prefix_patched">PATCHED_</string>
@@ -212,7 +212,7 @@
     <string name="desc_copy_logs">लॉग कॉपी करें</string>
     <string name="desc_clear_logs">लॉग साफ़ करें</string>
     <string name="label_loading">लोड हो रहा है…</string>
-    <string name="menu_language">भाषा 🌐</string>
+    <string name="menu_language">भाषा  🌐</string>
     <string name="menu_changelog">बदलावों की सूची</string>
     <string name="menu_faq">FAQ</string>
     <string name="menu_contact">संपर्क</string>
@@ -220,7 +220,7 @@
     <string name="menu_credits">क्रेडिट</string>
     <string name="menu_search">खोजें</string>
     <string name="menu_copy_xml">XML कॉपी करें</string>
-    <string name="menu_word_wrap">शब्द रैप</string>
+    <string name="menu_word_wrap">शब्द लपेटें</string>
 
     <!-- Importing Dialog -->
     <string name="dialog_import_title">APK आयात किया जा रहा है</string>
@@ -231,7 +231,7 @@
     <string name="error_no_aliases">कोई एलियास नहीं मिला।</string>
     <string name="error_choose_alias">एलियास चुनें: %1$s</string>
     <string name="error_alias_not_found">एलियास \'%1$s\' नहीं मिला। उपलब्ध: %2$s</string>
-    <string name="error_cannot_access_key">की तक नहीं पहुंचा जा सकता: गलत एलियास या की पासवर्ड।</string>
+    <string name="error_cannot_access_key">की तक पहुँच नहीं हो सकती: गलत एलियास या की पासवर्ड।</string>
     <string name="feedback_subject">[AMEditor] प्रतिक्रिया</string>
     <string name="toast_xml_copied">XML क्लिपबोर्ड पर कॉपी किया गया</string>
     <string name="label_manifest_filename">AndroidManifest.xml</string>

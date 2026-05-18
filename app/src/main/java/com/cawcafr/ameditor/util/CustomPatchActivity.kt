@@ -70,6 +70,8 @@ class CustomPatchActivity : AppCompatActivity() {
     private var xmlContent    = ""
     private var displayedText = ""
 
+    private var intervalTree: IntervalTree? = null
+
     @Volatile private var isParsed = false
 
     private val allNodes    = mutableListOf<XmlNode>()
@@ -186,11 +188,17 @@ class CustomPatchActivity : AppCompatActivity() {
         supportActionBar?.setDisplayShowTitleEnabled(false)
     }
 
+    @SuppressLint("WrongConstant")
     private fun setupViews() {
         // Fix: Use xmlTextView instead of xmlTextView which might be confused with layout id
         xmlTextView         = findViewById(R.id.xmlTextView)
         xmlTextView.highlightColor = android.graphics.Color.TRANSPARENT
         xmlTextView.setTextIsSelectable(false)
+        
+        // OPTIMIZATION: Faster layout calculation for large text
+        xmlTextView.breakStrategy = android.text.Layout.BREAK_STRATEGY_SIMPLE
+        xmlTextView.hyphenationFrequency = android.text.Layout.HYPHENATION_FREQUENCY_NONE
+
         btnDelete           = findViewById(R.id.btnModeDelete)
         btnDeactivate       = findViewById(R.id.btnModeDeactivate)
         xmlScrollView       = findViewById(R.id.xmlScrollView)
@@ -629,7 +637,10 @@ class CustomPatchActivity : AppCompatActivity() {
         if (line < 0 || line >= layout.lineCount) return
         val offset = layout.getOffsetForHorizontal(line, x.toFloat())
         if (x > 0 && x > layout.getLineWidth(line)) return
-        val candidates = allNodes.filter { it.start >= 0 && it.end > it.start && offset >= it.start && offset <= it.end }
+
+        // OPTIMIZATION: Use Interval Tree instead of linear filter
+        val candidates = intervalTree?.findOverlapping(offset) ?: emptyList()
+        
         if (candidates.isEmpty()) return
         val target = candidates.minByOrNull { it.length() } ?: return
         if (PROTECTED_TAGS.contains(target.tagName.lowercase())) return
@@ -643,6 +654,8 @@ class CustomPatchActivity : AppCompatActivity() {
 
     private fun parseNodes(source: String) {
         allNodes.clear()
+        // OPTIMIZATION: Using a more efficient approach to tree building if needed, 
+        // but for now we focus on the search optimization (Interval Tree).
         val tagPat  = Pattern.compile("<(/)?([a-zA-Z0-9_\\-:]+)((?:\\s[^>]*?)?)(/)?>", Pattern.DOTALL)
         val namePat = Pattern.compile("android:name\\s*=\\s*\"([^\"]+)\"")
         val matcher = tagPat.matcher(source)
@@ -663,6 +676,60 @@ class CustomPatchActivity : AppCompatActivity() {
                 val node = XmlNode(counter++, tag, matcher.start(), matcher.end(), null, mutableListOf(), aName)
                 if (stack.isNotEmpty()) { val p = stack.peek(); node.parent = p; p.children.add(node) }
                 allNodes.add(node); if (!isSelf) stack.push(node)
+            }
+        }
+        
+        // Build Interval Tree after parsing
+        intervalTree = IntervalTree(allNodes)
+    }
+
+    /**
+     * OPTIMIZATION: Interval Tree for O(log N) touch detection.
+     */
+    private class IntervalTree(nodes: List<XmlNode>) {
+        private val root: Node?
+
+        private class Node(
+            val xmlNode: XmlNode,
+            val left: Node?,
+            val right: Node?,
+            val maxEnd: Int
+        )
+
+        init {
+            root = buildTree(nodes.sortedBy { it.start })
+        }
+
+        private fun buildTree(nodes: List<XmlNode>): Node? {
+            if (nodes.isEmpty()) return null
+            val mid = nodes.size / 2
+            val left = buildTree(nodes.subList(0, mid))
+            val right = buildTree(nodes.subList(mid + 1, nodes.size))
+            var max = nodes[mid].end
+            if (left != null && left.maxEnd > max) max = left.maxEnd
+            if (right != null && right.maxEnd > max) max = right.maxEnd
+            return Node(nodes[mid], left, right, max)
+        }
+
+        fun findOverlapping(point: Int): List<XmlNode> {
+            val result = mutableListOf<XmlNode>()
+            search(root, point, result)
+            return result
+        }
+
+        private fun search(node: Node?, point: Int, result: MutableList<XmlNode>) {
+            if (node == null || point > node.maxEnd) return
+            // If the point is to the left of the start of the current node, 
+            // it can still overlap with nodes in the left subtree.
+            search(node.left, point, result)
+            
+            if (point >= node.xmlNode.start && point <= node.xmlNode.end) {
+                result.add(node.xmlNode)
+            }
+            
+            // If point is greater than or equal to start, it could overlap with current or right subtree
+            if (point >= node.xmlNode.start) {
+                search(node.right, point, result)
             }
         }
     }

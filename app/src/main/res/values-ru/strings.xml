@@ -172,7 +172,7 @@
     <string name="dialog_credits_title">⭐  Благодарности</string>
     <string name="dialog_credits_msg">Разработчик — Cawca-Fr\nПоддержка английского языка — Cawca-Fr\nПоддержка французского языка — Cawca-Fr</string>
     <string name="dialog_ressources_title">Ресурсы</string>
-    <string name="dialog_ressources_msg">AMEditor\n\nИспользуемые библиотеки с открытым исходным кодом:\n\n• apk-axml — кодек бинарного XML\n  (декодирование / кодирование AXML)\n\n• apksig (Google) — подпись APK\n  V1 / V2 / V3 подписи\n\n• AndroidX / Material Components\n  (Google)\n\nСоздано с ❤️ на Kotlin</string>
+    <string name="dialog_ressources_msg">AMEditor\n\nИспользуются следующие библиотеки с открытым исходным кодом:\n\n• Xpatch — github.com/WindySha/Xpatch\n• xml2axml — github.com/hzw1199/xml2axml\n• APK Explorer &amp; Editor — github.com/apk-editor/APK-Explorer-Editor</string>
     <string name="dialog_changelog_title">Список изменений</string>
     <string name="dialog_changelog_msg">v1.0\n• Первый выпуск\n• Патчинг AndroidManifest.xml\n• Редактор кастомных патчей\n• Предпросмотр манифеста\n• Подпись выходного apk</string>
 
