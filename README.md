@@ -25,6 +25,3 @@
 ##  Privacy Focus
 
 This project was created to give users more control over the applications they install on their devices. By removing trackers at the manifest level, we significantly reduce the data footprint of third-party apps.
-
----
-*Developed by Eren Kara*
